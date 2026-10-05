@@ -1,0 +1,14 @@
+services:
+  jarvis-inference:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: jarvis-inference
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../.env
+    cpus: ${INFERENCE_CPUS:-2.50}
+    mem_limit: ${INFERENCE_MEMORY_LIMIT:-10g}
+    pids_limit: 256
