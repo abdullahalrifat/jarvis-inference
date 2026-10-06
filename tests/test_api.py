@@ -69,3 +69,19 @@ def test_readiness_returns_503_when_backend_not_ready(monkeypatch) -> None:
     response = TestClient(app).get("/ready")
     assert response.status_code == 503
     assert response.json()["reason"] == "backend_unhealthy"
+
+
+def test_embeddings(monkeypatch) -> None:
+    async def fake_embeddings(model: str, inputs: list[str]) -> list[list[float]]:
+        assert model == "nomic-embed-text"
+        assert inputs == ["hello", "world"]
+        return [[0.1, 0.2], [0.3, 0.4]]
+
+    monkeypatch.setattr(scheduler, "embeddings", fake_embeddings)
+    response = TestClient(app).post(
+        "/v1/embeddings",
+        json={"model": "nomic-embed-text", "input": ["hello", "world"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"][1]["embedding"] == [0.3, 0.4]
