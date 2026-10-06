@@ -10,3 +10,8 @@ models:
     required: true
     digest: ""
     max_context: 8192
+  - name: nomic-embed-text
+    role: embedding
+    required: true
+    digest: ""
+    max_context: 8192
