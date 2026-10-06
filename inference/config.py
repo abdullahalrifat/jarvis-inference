@@ -30,7 +30,7 @@ class Settings:
         default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0))
     )
     memory_headroom_gb: float = field(
-        default_factory=lambda: max(0.25, _float("MEMORY_HEADROOM_GB", 0.25))
+        default_factory=lambda: max(1.0, _float("MEMORY_HEADROOM_GB", 1.0))
     )
     request_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0))
