@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from inference.circuit import CircuitOpenError, CircuitBreaker
+from inference.circuit import CircuitBreaker, CircuitOpenError
 
 
 def test_circuit_opens_and_recovers(monkeypatch) -> None:
