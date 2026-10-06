@@ -30,7 +30,7 @@ class Settings:
         default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0))
     )
     memory_headroom_gb: float = field(
-        default_factory=lambda: max(0.25, _float("MEMORY_HEADROOM_GB", 1.5))
+        default_factory=lambda: max(0.25, _float("MEMORY_HEADROOM_GB", 0.25))
     )
     request_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0))
@@ -38,12 +38,21 @@ class Settings:
     shutdown_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("SHUTDOWN_TIMEOUT_SECONDS", 30.0))
     )
+    model_refresh_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("MODEL_REFRESH_SECONDS", 15.0))
+    )
+    circuit_failure_threshold: int = field(
+        default_factory=lambda: max(1, _int("CIRCUIT_FAILURE_THRESHOLD", 3))
+    )
+    circuit_recovery_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0))
+    )
     default_model: str = field(default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b"))
     ollama_url: str = field(
         default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
-    ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "10m"))
+    ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
 
     @property
     def models(self) -> tuple[str, ...]:
