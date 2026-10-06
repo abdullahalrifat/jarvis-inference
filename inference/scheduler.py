@@ -321,7 +321,7 @@ class Scheduler:
             return {"ready": False, "reason": "backend_unhealthy"}
         await model_manager.refresh(self.backend, force=True)
         state = model_manager.status()
-        configured = set(settings.models)
+        configured = set(settings.inference_models)
         available = set(state["available_models"])
         missing = sorted(configured - available)
         if missing:
