@@ -53,7 +53,7 @@ class FakeClient:
     async def __aexit__(self, *args):
         return None
 
-    async def get(self, url):
+    async def get(self, url, **kwargs):
         return FakeResponse({"models": []})
 
     async def post(self, url, json):
