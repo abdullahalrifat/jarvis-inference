@@ -5,11 +5,11 @@ import uuid
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from .config import settings
-from .errors import InferenceError
-from .metrics import metrics
-from .resources import status as resource_status
-from .scheduler import scheduler
+from inference.config import settings
+from inference.errors import InferenceError
+from inference.metrics import metrics
+from inference.resources import status as resource_status
+from inference.scheduler import scheduler
 
 
 router = APIRouter()
