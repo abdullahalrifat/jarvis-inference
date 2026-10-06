@@ -52,6 +52,10 @@ class Scheduler:
 
     @property
     def circuit(self) -> CircuitBreaker:
+        if self.backend.name not in self._circuits:
+            self._circuits[self.backend.name] = CircuitBreaker(
+                settings.circuit_failure_threshold, settings.circuit_recovery_seconds
+            )
         return self._circuits[self.backend.name]
 
     def _enqueue(self) -> None:
