@@ -113,14 +113,14 @@ class Scheduler:
 
     async def chat(self, payload: dict[str, Any]) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
-        try:
-            warm = await self._prepare(model)
-        except InferenceError as exc:
-            self._backend_failure(exc)
-            raise
         self._enqueue()
         enqueued = time.perf_counter()
         try:
+            try:
+                warm = await self._prepare(model)
+            except InferenceError as exc:
+                self._backend_failure(exc)
+                raise
             async with self._semaphore:
                 QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
                 try:
@@ -175,14 +175,15 @@ class Scheduler:
 
     async def stream(self, payload: dict[str, Any]) -> AsyncIterator[str]:
         model = str(payload.get("model") or settings.default_model)
-        try:
-            warm = await self._prepare(model)
-        except InferenceError as exc:
-            self._backend_failure(exc)
-            raise
         self._enqueue()
         enqueued = time.perf_counter()
         started: float | None = None
+        try:
+            try:
+                warm = await self._prepare(model)
+            except InferenceError as exc:
+                self._backend_failure(exc)
+                raise
         first_token: float | None = None
         try:
             async with self._semaphore:
