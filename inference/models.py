@@ -82,6 +82,18 @@ class ModelManager:
             else:
                 self._cold_requests += 1
 
+    def record_loaded(self, model: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if settings.max_loaded_models <= 1:
+                for previous in tuple(self._loaded):
+                    if previous != model:
+                        self._last_unload[previous] = now
+                self._loaded = {model}
+            else:
+                self._loaded.add(model)
+            self._last_load[model] = self._last_load.get(model, now)
+
     def status(self) -> dict[str, object]:
         with self._lock:
             loaded = sorted(self._loaded)
