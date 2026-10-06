@@ -77,6 +77,237 @@ bash scripts/install.sh
 
 The installer validates Docker/Compose, validates the Compose file, builds the gateway, starts Ollama, ensures configured models are present, waits for readiness, and runs authenticated smoke checks.
 
+## Deployment lifecycle
+
+All commands below are run from the repository root on the dedicated inference VM.
+
+### 1. First deployment
+
+Install Docker Engine and Docker Compose v2 first, then:
+
+```bash
+git clone https://github.com/abdullahalrifat/jarvis-inference.git
+cd jarvis-inference
+cp .env.example .env
+chmod 600 .env
+```
+
+For a dedicated inference VM serving Jarvis or AI Stack from another VM, configure:
+
+```env
+INFERENCE_BIND_ADDRESS=0.0.0.0
+INFERENCE_API_KEY=<long-random-secret>
+```
+
+Keep TCP 8080 restricted to trusted private-network clients. Ollama port 11434 must remain internal.
+
+Run the idempotent installer:
+
+```bash
+bash scripts/install.sh
+```
+
+Verify:
+
+```bash
+docker compose ps
+curl -sS http://127.0.0.1:8080/health
+curl -sS http://127.0.0.1:8080/ready
+```
+
+From a remote Jarvis/AI Stack VM:
+
+```bash
+curl -sS http://<INFERENCE_VM_IP>:8080/ready
+```
+
+### 2. Pull the latest changes
+
+The installer does not replace your `.env`. Before updating:
+
+```bash
+cd ~/docker/jarvis-inference
+git status
+git pull --ff-only
+```
+
+If `git status` shows local source changes, stop and review them before pulling. Never use `git reset --hard` unless you intentionally want to discard local changes.
+
+### 3. Re-deploy after pulling changes
+
+Use the same installer:
+
+```bash
+bash scripts/install.sh
+```
+
+It validates Compose, rebuilds the gateway, starts the services, ensures configured Ollama models exist, waits for readiness, and runs smoke checks.
+
+For a source-only gateway change, you can rebuild/recreate just the gateway:
+
+```bash
+docker compose build --pull jarvis-inference
+docker compose up -d --force-recreate jarvis-inference
+```
+
+Do not remove the Ollama volume during normal redeployment; otherwise the models will need to be downloaded again.
+
+### 4. Normal operations
+
+Check status:
+
+```bash
+docker compose ps
+```
+
+View gateway logs:
+
+```bash
+docker compose logs --tail=200 jarvis-inference
+```
+
+View Ollama logs:
+
+```bash
+docker compose logs --tail=200 ollama
+```
+
+Follow logs:
+
+```bash
+docker compose logs -f jarvis-inference
+```
+
+Restart only the gateway:
+
+```bash
+docker compose restart jarvis-inference
+```
+
+Restart both services:
+
+```bash
+docker compose restart ollama jarvis-inference
+```
+
+### 5. Shut down the inference stack
+
+To stop the containers while preserving models and configuration:
+
+```bash
+docker compose stop
+```
+
+To stop and remove the containers/network while preserving the named Ollama model volume:
+
+```bash
+docker compose down
+```
+
+This is the preferred shutdown before VM maintenance or reboot.
+
+Start again without rebuilding:
+
+```bash
+docker compose up -d
+```
+
+### 6. Full cleanup
+
+For a normal application cleanup, use:
+
+```bash
+docker compose down
+```
+
+This removes containers and the Compose network but **does not remove the Ollama model volume**.
+
+To deliberately remove the downloaded models as well:
+
+```bash
+docker compose down -v
+```
+
+This is destructive: all Ollama model data in the Compose volume will be deleted and the next deployment will download the models again.
+
+Do not run `docker system prune --volumes` as part of routine maintenance because it can remove unrelated Docker resources.
+
+### 7. Complete removal from the VM
+
+If the inference VM is being retired and you want to remove the application, containers, network, and model volume:
+
+```bash
+cd ~/docker/jarvis-inference
+docker compose down -v
+cd ..
+rm -rf jarvis-inference
+```
+
+Back up the production `.env` securely before doing this if the VM may need to be rebuilt.
+
+### 8. Recovery after a VM reboot
+
+Docker should restart the Compose services according to the Compose restart policy. Verify:
+
+```bash
+cd ~/docker/jarvis-inference
+docker compose ps
+curl -sS http://127.0.0.1:8080/ready
+```
+
+If the stack did not start:
+
+```bash
+docker compose up -d
+```
+
+If the gateway image or source needs rebuilding:
+
+```bash
+bash scripts/install.sh
+```
+
+### 9. Troubleshooting remote connection refused
+
+On the inference VM:
+
+```bash
+docker compose ps
+hostname -I
+```
+
+The gateway should show a publication similar to:
+
+```text
+0.0.0.0:8080->8080/tcp
+```
+
+Check the bind setting:
+
+```bash
+grep '^INFERENCE_BIND_ADDRESS=' .env
+```
+
+For cross-VM access it should be:
+
+```env
+INFERENCE_BIND_ADDRESS=0.0.0.0
+```
+
+Then recreate the gateway:
+
+```bash
+docker compose up -d --force-recreate jarvis-inference
+```
+
+From the client VM:
+
+```bash
+curl -sS http://<INFERENCE_VM_IP>:8080/ready
+```
+
+If local readiness works but remote access fails, check the VM firewall and private-network routing. Do not expose port 11434.
+
 ## Operations
 
 From the repository root:
