@@ -1,169 +1,214 @@
 # jarvis-inference
 
-Production-grade, CPU-optimized local inference gateway for the Jarvis stack.
+Production-grade CPU inference gateway for the Jarvis stack.
 
-```
-Jarvis -> AI Stack -> jarvis-inference -> Ollama / llama.cpp
-```
+Architecture:
 
-## World-class runtime features
+    Jarvis -> AI Stack -> jarvis-inference -> Ollama / llama.cpp
 
-- OpenAI-compatible `/v1/chat/completions` with streaming SSE.
-- Concrete model IDs only; no agent aliases.
-- OpenAI function/tool calling and `response_format` JSON / JSON Schema mapping to Ollama.
-- Model lifecycle state: configured, installed, loaded/warm, cold requests and model transitions.
-- Proper readiness: backend health, configured model availability and circuit state.
-- Persistent HTTP/keep-alive connection pools.
-- Bounded queue + single-generation scheduling tuned for the 4-core/16 GiB OptiPlex.
-- Circuit breaker with half-open recovery.
-- Cancellation-safe cleanup for queue slots, semaphores and active-request metrics.
-- TTFT, generation duration, token throughput, queue wait, model-load and resource telemetry.
-- Prometheus metrics plus a ready-to-import Grafana dashboard.
-- Repeatable cold/warm benchmark suite with p50/p95/p99 latency and TTFT.
-- Reproducible production images pinned by digest.
-- Release automation with Python artifacts, GHCR image, SBOM, Trivy scanning and GitHub artifact attestations.
-- Dependabot, dependency review, pip-audit, CodeQL and filesystem security scanning.
-- Non-root, read-only inference container with bounded CPU/RAM.
+## Production profile
 
-## OptiPlex 7040 / 16 GiB baseline
+This repository is optimized for a dedicated CPU-only inference VM rather than a shared 4-core host.
 
-The production profile is deliberately conservative:
+Recommended Proxmox starting point:
 
-- `qwen3:1.7b` = default fast model.
-- `qwen3:4b` = explicit heavier reasoning model.
+- VM: 4 vCPU, 10-12 GiB RAM.
+- Ollama: 2.75 CPU, 9 GiB RAM.
+- Gateway: 0.50 CPU, 512 MiB RAM.
 - One active generation.
 - One loaded model.
-- Eight queued requests.
-- Ollama gets about 3 CPU cores and 10 GiB RAM.
-- Gateway stays below 1 GiB.
-- 30-minute keep-alive avoids unnecessary reloads during normal personal use.
+- Queue size 8.
+- Context length 8192.
+- Ollama keep-alive 30 minutes.
+- SSD-backed Ollama volume.
 
-Do not expose Ollama port `11434`; expose only the gateway.
+The VM is intentionally provisioned above the container limits so Linux, Docker, page cache and upgrades retain headroom.
 
-## Lifecycle and readiness
+Configured models:
 
-`GET /ready` is a real readiness probe rather than a process-alive check. It requires:
+- qwen3:1.7b — default fast model.
+- qwen3:4b — explicit reasoning model.
 
-1. Backend reachable.
-2. Circuit closed / probeable.
-3. Every configured model installed on the selected backend.
+Do not reintroduce aliases such as orchestrator or qwen3-4b.
 
-`GET /v1/inference/status` exposes active model, available models, loaded models, warm/cold request counts, queue state, circuit state and resource telemetry.
+## Runtime features
 
-A request records whether the target model was already loaded before generation. A successful request marks that model warm; with `MAX_LOADED_MODELS=1`, switching models records the previous model as evicted.
+- OpenAI-compatible chat completions with SSE streaming.
+- Tool/function calling and JSON/JSON Schema structured output.
+- Direct model IDs only.
+- Model lifecycle tracking: installed, loaded/warm, cold requests and evictions.
+- Real readiness endpoint separate from liveness.
+- Persistent HTTP connection pools.
+- Bounded queue and single-generation scheduler.
+- Circuit breaker with recovery.
+- Cancellation-safe request cleanup.
+- TTFT, generation duration, queue wait and token throughput metrics.
+- Prometheus metrics and Grafana dashboard.
+- Cold/warm benchmarking.
+- API-key authentication.
+- Non-root, read-only gateway container.
+- Pinned production container images.
+- SHA-pinned GitHub Actions.
+- SBOM, vulnerability scanning and artifact provenance.
 
-## OpenAI compatibility
+## Model integrity
 
-Supported request fields include:
+models/manifest.yaml is the deployment lock file.
 
-- `temperature`, `top_p`, `top_k`, `min_p`, `seed`
-- `num_ctx`, `repeat_penalty`, `stop`, `max_tokens`
-- `tools`, `tool_choice`
-- `response_format.type=json_object`
-- `response_format.type=json_schema`
-- `stream`, `keep_alive`
+The workflow is:
 
-Tool calls are returned in the OpenAI `message.tool_calls` shape. Structured output schemas are translated to Ollama's native `format` contract.
+    bash scripts/download-models.sh
+    bash scripts/lock-models.sh
+    bash scripts/verify-models.sh
 
-## Performance and benchmarking
+The first lock operation is a deliberate trust ceremony. Review the installed model digest before committing the manifest. Future deployments fail if the installed digest differs from the locked digest.
 
-The benchmark separates cold and warm workloads. Cold runs use `keep_alive=0`; warm runs use the configured keep-alive.
+An empty digest is intentionally considered unpinned and is rejected by verify-models.sh. This prevents a tag from silently moving to a different model artifact.
 
-```bash
-./scripts/benchmark.sh qwen3:1.7b
-./scripts/benchmark.sh qwen3:4b
-```
+## Installation
 
-The underlying suite measures:
+    git clone https://github.com/abdullahalrifat/jarvis-inference.git
+    cd jarvis-inference
+    cp .env.example .env
 
-- TTFT
-- total latency
-- completion token count
-- tokens/sec
-- warm p50/p95/p99
+Set INFERENCE_API_KEY before remote exposure, then:
 
-The server also exports backend-reported Ollama timings when available. Ollama exposes load, prompt-evaluation and generation durations in nanoseconds, including final streaming usage data. citeturn3search0turn3search2
+    bash scripts/config-doctor.sh
+    bash scripts/install-optiplex.sh
 
-For this OptiPlex, optimize for **stable warm latency and throughput**, not concurrency. Increasing generation concurrency generally makes a 4-core CPU workload slower and more memory-sensitive.
+Only the gateway is published. Ollama port 11434 is never published.
 
-## Observability
+## Production operations
 
-Prometheus metrics include:
+Configuration:
 
-- `inference_requests_total`
-- `inference_request_duration_seconds`
-- `inference_queue_wait_seconds`
-- `inference_time_to_first_token_seconds`
-- `inference_generation_duration_seconds`
-- `inference_tokens_total`
-- `inference_tokens_per_second`
-- `inference_model_load_seconds`
-- `inference_queue_depth`
-- `inference_active_requests`
-- `inference_backend_errors_total`
-- `inference_resource_rejections_total`
-- `inference_circuit_open`
-- `inference_model_warm`
-- `inference_host_cpu_percent`
-- `inference_host_memory_available_gib`
-- `inference_container_memory_available_gib`
+    bash scripts/config-doctor.sh
+    bash scripts/status-optiplex.sh
 
-Import `observability/grafana/jarvis-inference.json` into Grafana and point it at your Prometheus datasource.
+Readiness:
 
-If `INFERENCE_API_KEY` is set, Prometheus must send the same bearer token to `/metrics`.
+    bash scripts/wait-ready.sh
 
-## Security and supply chain
+Models:
 
-- Gateway binds to localhost in Compose.
-- Ollama is never published to the host.
-- API-key authentication is available for all authenticated API/metrics endpoints.
-- Containers use a non-root user, read-only filesystem, no-new-privileges and resource limits.
-- Python and Ollama production images are pinned by digest.
-- Releases publish Python distributions and a GHCR image.
-- Release builds generate SPDX SBOMs and scan the container with Trivy.
-- GitHub artifact attestations establish release provenance.
-- PR/main security automation runs dependency review, pip-audit, Trivy filesystem scanning and CodeQL.
-- Dependabot keeps Python, Docker and GitHub Action dependencies current.
+    bash scripts/download-models.sh
+    bash scripts/verify-models.sh
 
-GitHub recommends artifact attestations for establishing build provenance and supports SBOM attestations for release artifacts. citeturn2search0turn2search5
+Backup:
 
-## AI Stack
+    bash scripts/backup.sh
+    bash scripts/restore.sh "$HOME/jarvis-inference-backups/latest"
 
-```
-INFERENCE_BASE_URL=http://jarvis-inference:8080/v1
-INFERENCE_API_KEY=<same key>
-DEFAULT_MODEL=qwen3:1.7b
-AGENT_REASONING_MODEL=qwen3:4b
-```
+Upgrade:
 
-Use direct model IDs. Do not reintroduce aliases such as `orchestrator` or `qwen3-4b`.
+    bash scripts/upgrade-optiplex.sh <reviewed-ref>
 
-For separate Compose projects, attach them to the same external Docker network and use the gateway container name.
+Rollback:
 
-## Quick start
+    bash scripts/rollback-optiplex.sh <known-good-sha>
 
-```bash
-git clone https://github.com/abdullahalrifat/jarvis-inference.git
-cd jarvis-inference
-./scripts/install-optiplex.sh
-./scripts/smoke-test.sh
-```
+Watchdog:
 
-Set `INFERENCE_API_KEY` before remote exposure.
+    bash scripts/watchdog.sh
+
+The watchdog checks free disk, available RAM, container state and gateway readiness. Schedule it every five minutes with systemd or cron.
+
+## Transactional upgrades
+
+upgrade-optiplex.sh is designed as a deployment transaction:
+
+1. Require a clean Git tree.
+2. Back up configuration.
+3. Run the configuration doctor.
+4. Fetch the reviewed target.
+5. Build the gateway image.
+6. Restart the stack.
+7. Wait for readiness.
+8. Verify model digests.
+9. Run the smoke test.
+10. Automatically return to the previous commit if build, readiness or model verification fails.
+
+This keeps code upgrades separate from model upgrades.
+
+## Backup and disaster recovery
+
+Normal backups contain:
+
+- .env and deployment configuration.
+- Docker Compose and Dockerfile.
+- model manifest.
+- rendered Compose configuration.
+- Git revision.
+- SHA-256 checksums.
+
+Model data is excluded by default because it is large and reproducible. For a full model-volume backup:
+
+    BACKUP_MODELS=1 bash scripts/backup.sh
+
+See docs/PRODUCTION.md, docs/RUNBOOK.md and docs/DISASTER-RECOVERY.md for the complete operating procedures.
+
+## Benchmarking and regression detection
+
+Run:
+
+    bash scripts/benchmark.sh qwen3:1.7b
+    bash scripts/benchmark.sh qwen3:4b
+
+Results are stored under benchmarks/ and ignored by Git.
+
+Compare a candidate against a known-good baseline:
+
+    python3 scripts/benchmark-regression.py baseline.json candidate.json
+
+Default rejection thresholds:
+
+- warm p50/p95 latency: +20%.
+- warm p50 TTFT: +25%.
+- warm p50 throughput: -15%.
+
+These are guardrails, not promises. Tune them from several runs on the real VM.
+
+## Security
+
+- Gateway binds to loopback in the default Compose deployment.
+- Ollama is not exposed.
+- Remote gateway access requires an API key.
+- Containers use non-root/read-only/no-new-privileges controls.
+- Docker logs have bounded rotation.
+- Production images are pinned by digest.
+- GitHub Actions are pinned to immutable commit SHAs.
+- pip-audit and Trivy run in CI.
+- Release artifacts receive SBOMs and GitHub artifact attestations.
+- Dependabot tracks Python, Docker and GitHub Action dependencies.
+
+## AI Stack integration
+
+Use direct model IDs:
+
+    INFERENCE_BASE_URL=http://jarvis-inference:8080/v1
+    INFERENCE_API_KEY=<same key>
+    DEFAULT_MODEL=qwen3:1.7b
+    AGENT_REASONING_MODEL=qwen3:4b
+
+For separate Compose projects, connect both projects to the same private Docker network and address the gateway by its container/network name.
 
 ## Development gates
 
-```bash
-python -m pip install -e '.[dev]'
-python -m ruff check .
-python -m ruff format --check .
-python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=70
-```
+    python -m pip install -e '.[dev]'
+    python -m ruff check .
+    python -m ruff format --check .
+    bash -n scripts/*.sh
+    python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=70
 
-`pyproject.toml` is the source of truth for package metadata and dependencies. `requirements.txt` is only a convenient runtime deployment file.
+pyproject.toml is the source of truth for package metadata and dependencies. requirements.txt is the runtime deployment convenience file.
 
-## Docker reproducibility
+## Production principles
 
-The Dockerfile and Compose file pin their production base/runtime images by immutable digest. Renovate/Dependabot should be used to refresh those pins deliberately rather than using moving `latest` tags.
-
-The current Ollama production image is pinned to version `0.35.1`; the official image publishes platform-specific manifests, so the digest is deliberately explicit for reproducible amd64 deployment. citeturn7view0
+1. Optimize for stable warm latency, not concurrency.
+2. Keep one model loaded.
+3. Prefer qwen3:1.7b for routine requests.
+4. Use qwen3:4b when reasoning quality justifies its CPU cost.
+5. Treat model digests as deployment inputs, not mutable configuration.
+6. Benchmark before and after runtime/model changes.
+7. Back up configuration before upgrades.
+8. Roll back automatically when a deployment gate fails.
