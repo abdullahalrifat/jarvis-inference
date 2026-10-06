@@ -113,7 +113,11 @@ class Scheduler:
 
     async def chat(self, payload: dict[str, Any]) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
-        warm = await self._prepare(model)
+        try:
+            warm = await self._prepare(model)
+        except InferenceError as exc:
+            self._backend_failure(exc)
+            raise
         self._enqueue()
         enqueued = time.perf_counter()
         try:
@@ -173,7 +177,11 @@ class Scheduler:
 
     async def stream(self, payload: dict[str, Any]) -> AsyncIterator[str]:
         model = str(payload.get("model") or settings.default_model)
-        warm = await self._prepare(model)
+        try:
+            warm = await self._prepare(model)
+        except InferenceError as exc:
+            self._backend_failure(exc)
+            raise
         self._enqueue()
         enqueued = time.perf_counter()
         started: float | None = None
