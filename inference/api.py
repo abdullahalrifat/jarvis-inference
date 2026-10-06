@@ -77,6 +77,7 @@ async def embeddings(
         "usage": {"prompt_tokens": 0, "total_tokens": 0},
     }
 
+
 @router.get("/v1/models", response_model=dict)
 async def models(authorization: str | None = Header(default=None)) -> dict[str, object]:
     _auth(_bearer(authorization))
