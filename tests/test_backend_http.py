@@ -83,10 +83,7 @@ async def test_ollama_health_and_chat(monkeypatch) -> None:
 async def test_ollama_stream(monkeypatch) -> None:
     monkeypatch.setattr("inference.backends.ollama.httpx.AsyncClient", FakeClient)
 
-    lines = [
-        line
-        async for line in OllamaBackend().stream("qwen3:1.7b", {"messages": []})
-    ]
+    lines = [line async for line in OllamaBackend().stream("qwen3:1.7b", {"messages": []})]
 
     assert len(lines) == 2
 
