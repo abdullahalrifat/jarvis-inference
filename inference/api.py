@@ -40,11 +40,12 @@ async def health() -> dict[str, str]:
 
 @router.get("/ready")
 async def ready() -> dict[str, object]:
-    backend_ok = await scheduler.readiness()
+    readiness = await scheduler.readiness()
     return {
-        "status": "ready" if backend_ok else "not_ready",
+        "status": "ready" if readiness["ready"] else "not_ready",
         "backend": scheduler.backend.name,
         "models": list(settings.models),
+        **readiness,
     }
 
 
@@ -66,7 +67,10 @@ async def inference_status(
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
-async def prometheus_metrics() -> PlainTextResponse:
+async def prometheus_metrics(
+    authorization: str | None = Header(default=None),
+) -> PlainTextResponse:
+    _auth(_bearer(authorization))
     return PlainTextResponse(render().decode())
 
 
@@ -98,6 +102,7 @@ async def chat(
             detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
             headers={"X-Request-ID": request_id},
         ) from exc
+    result.pop("_inference", None)
     result.setdefault("id", request_id)
     result.setdefault("created", int(time.time()))
     result.setdefault("object", "chat.completion")
@@ -110,13 +115,15 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
     model = str(body["model"])
     model_manager.validate(model)
     backend = scheduler.backend
-    if backend.name == "ollama":
-        async for line in scheduler.stream(body):
+    async for line in scheduler.stream(body):
+        if backend.name == "ollama":
             data = backend.sse_data(line)
             message = data.get("message") or {}
-            delta = {"content": message.get("content", "")}
+            delta: dict[str, object] = {"content": message.get("content", "")}
             if message.get("role"):
                 delta["role"] = message["role"]
+            if message.get("tool_calls"):
+                delta["tool_calls"] = message["tool_calls"]
             chunk = {
                 "id": request_id,
                 "object": "chat.completion.chunk",
@@ -126,12 +133,18 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
                     {
                         "index": 0,
                         "delta": delta,
-                        "finish_reason": "stop" if data.get("done") else None,
+                        "finish_reason": data.get("done_reason") if data.get("done") else None,
                     }
                 ],
             }
+            if data.get("done") and data.get("eval_count") is not None:
+                chunk["usage"] = {
+                    "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                    "completion_tokens": int(data.get("eval_count") or 0),
+                    "total_tokens": int(data.get("prompt_eval_count") or 0)
+                    + int(data.get("eval_count") or 0),
+                }
             yield f"data: {json.dumps(chunk)}\n\n"
-    else:
-        async for line in scheduler.stream(body):
+        else:
             yield f"data: {line}\n\n"
     yield "data: [DONE]\n\n"
