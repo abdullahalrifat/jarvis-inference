@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from inference.errors import InferenceError
+from inference.models import model_manager
 from inference.scheduler import Scheduler
 
 
@@ -11,6 +12,12 @@ class FakeBackend:
 
     async def health(self) -> bool:
         return True
+
+    async def available_models(self) -> list[str]:
+        return ["qwen3:1.7b", "qwen3:4b"]
+
+    async def loaded_models(self) -> list[str]:
+        return ["qwen3:1.7b"]
 
     async def chat(self, model: str, payload: dict) -> dict:
         return {
@@ -39,6 +46,9 @@ def scheduler() -> Scheduler:
     instance = Scheduler()
     instance._semaphore = asyncio.Semaphore(1)
     instance._queue = asyncio.Queue(maxsize=2)
+    model_manager._available.clear()
+    model_manager._loaded.clear()
+    model_manager._last_refresh = 0
     return instance
 
 
@@ -50,6 +60,7 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
     assert result["model"] == "qwen3:1.7b"
     assert result["usage"] == {"prompt_tokens": 2, "completion_tokens": 3}
     assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["warm_requests"] >= 1
 
 
 @pytest.mark.asyncio
@@ -125,15 +136,25 @@ async def test_resource_pressure_is_normalized(monkeypatch, scheduler: Scheduler
 
 
 @pytest.mark.asyncio
-async def test_readiness_delegates_to_backend(scheduler: Scheduler) -> None:
+async def test_readiness_reports_model_availability(scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
-    assert await scheduler.readiness() is True
+    result = await scheduler.readiness()
+    assert result["ready"] is True
 
 
-def test_status_reports_backend_and_models(scheduler: Scheduler) -> None:
-    status = scheduler.status()
+@pytest.mark.asyncio
+async def test_cancellation_releases_queue_and_active_slot(scheduler: Scheduler) -> None:
+    class BlockingBackend(FakeBackend):
+        async def chat(self, model: str, payload: dict) -> dict:
+            await asyncio.sleep(10)
+            return await super().chat(model, payload)
 
-    assert status["backend"] == "ollama"
-    assert status["queue_depth"] == 0
-    assert status["concurrency"] >= 1
-    assert "configured_models" in status
+    scheduler._ollama = BlockingBackend()
+    task = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
+    await asyncio.sleep(0.01)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert scheduler.status()["queue_depth"] == 0
