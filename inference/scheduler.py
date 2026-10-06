@@ -8,7 +8,7 @@ from typing import Any
 
 from inference.backends.llamacpp import LlamaCppBackend
 from inference.backends.ollama import OllamaBackend
-from inference.circuit import CircuitOpenError, CircuitBreaker
+from inference.circuit import CircuitBreaker, CircuitOpenError
 from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import (
