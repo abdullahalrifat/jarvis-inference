@@ -58,13 +58,13 @@ class OllamaBackend:
                 data = response.json()
                 embeddings = data.get("embeddings") or []
                 if not embeddings:
-                    raise InferenceError(
-                        "BACKEND_ERROR", "Ollama returned no embedding", True, 503
-                    )
+                    raise InferenceError("BACKEND_ERROR", "Ollama returned no embedding", True, 503)
                 vectors.append([float(value) for value in embeddings[0]])
             return vectors
         except httpx.TimeoutException as exc:
-            raise InferenceError("EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504) from exc
+            raise InferenceError(
+                "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(
