@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+if [[ -f .env ]]; then set -a; source .env; set +a; fi
 MIN_FREE_GIB="${MIN_FREE_GIB:-10}"
 MIN_RAM_GIB="${MIN_RAM_GIB:-1}"
 PORT="$(grep '^INFERENCE_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 8080)"
