@@ -38,7 +38,7 @@ services:
     init: true
     stop_grace_period: 30s
     env_file:
-      - ../.env
+      - .env
     depends_on:
       ollama:
         condition: service_healthy
