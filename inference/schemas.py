@@ -24,6 +24,9 @@ class ChatCompletionRequest(BaseModel):
     repeat_penalty: float | None = Field(default=None, gt=0, le=3)
     stop: str | list[str] | None = None
     max_tokens: int | None = Field(default=None, gt=0, le=32768)
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: Any = None
+    response_format: dict[str, Any] | None = None
     stream: bool = False
     keep_alive: str | int | None = None
 
