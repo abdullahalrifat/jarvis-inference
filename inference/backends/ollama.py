@@ -36,15 +36,26 @@ class OllamaBackend:
         except httpx.HTTPError:
             return False
 
+    @staticmethod
+    def _canonical_model_name(name: str) -> str:
+        """Normalize Ollama's implicit :latest tag to the API model ID."""
+        return name[:-len(":latest")] if name.endswith(":latest") else name
+
     async def available_models(self) -> list[str]:
         response = await self._client.get(f"{settings.ollama_url}/api/tags", timeout=3)
         response.raise_for_status()
-        return [str(item["name"]) for item in response.json().get("models", [])]
+        return [
+            self._canonical_model_name(str(item["name"]))
+            for item in response.json().get("models", [])
+        ]
 
     async def loaded_models(self) -> list[str]:
         response = await self._client.get(f"{settings.ollama_url}/api/ps", timeout=3)
         response.raise_for_status()
-        return [str(item["name"]) for item in response.json().get("models", [])]
+        return [
+            self._canonical_model_name(str(item["name"]))
+            for item in response.json().get("models", [])
+        ]
 
     async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
         try:
