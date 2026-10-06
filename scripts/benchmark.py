@@ -61,12 +61,15 @@ def main() -> None:
         for _ in range(max(1, args.runs))
     ]
     latencies = [item["latency_seconds"] for item in warm]
+    ttfts = [item["ttft_seconds"] for item in warm]
     throughput = [item["tokens_per_second"] for item in warm if item["tokens_per_second"]]
     result = {
         "model": args.model,
         "cold": cold,
         "warm": {
             "runs": len(warm),
+            "ttft_p50_seconds": percentile(ttfts, 0.50),
+            "ttft_p95_seconds": percentile(ttfts, 0.95),
             "latency_p50_seconds": percentile(latencies, 0.50),
             "latency_p95_seconds": percentile(latencies, 0.95),
             "latency_p99_seconds": percentile(latencies, 0.99),
