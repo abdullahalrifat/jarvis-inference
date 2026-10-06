@@ -60,7 +60,9 @@ class ModelManager:
         self.validate(model)
         refreshed = await self.refresh(backend)
         if not refreshed:
-            raise InferenceError("BACKEND_UNAVAILABLE", "Unable to query backend model state", True, 503)
+            raise InferenceError(
+                "BACKEND_UNAVAILABLE", "Unable to query backend model state", True, 503
+            )
         with self._lock:
             available = model in self._available
         if not available:
