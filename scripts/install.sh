@@ -37,6 +37,16 @@ if [[ "$bind_address" != "127.0.0.1" && "$bind_address" != "::1" && -z "$api_key
   fail "INFERENCE_API_KEY is required when the gateway is remotely reachable."
 fi
 
+echo "==> Cleaning stale inference containers"
+# Compose uses stable container names. Remove only this application containers;
+# volumes are deliberately preserved so downloaded models survive redeployments.
+for container in jarvis-inference jarvis-ollama; do
+  if docker container inspect "$container" >/dev/null 2>&1; then
+    echo "Removing existing container: $container"
+    docker rm -f "$container" >/dev/null
+  fi
+done
+
 echo "==> Validating Compose configuration"
 docker compose -f "$COMPOSE_FILE" config --quiet
 
@@ -47,12 +57,18 @@ echo "==> Starting inference services"
 docker compose -f "$COMPOSE_FILE" up -d ollama jarvis-inference
 
 echo "==> Waiting for Ollama"
+ollama_ready=0
 for _ in {1..60}; do
   if docker compose -f "$COMPOSE_FILE" exec -T ollama ollama list >/dev/null 2>&1; then
+    ollama_ready=1
     break
   fi
   sleep 2
 done
+(( ollama_ready == 1 )) || {
+  docker compose -f "$COMPOSE_FILE" ps
+  fail "Ollama did not become ready."
+}
 
 for model in ${models//,/ }; do
   echo "==> Ensuring model: $model"
