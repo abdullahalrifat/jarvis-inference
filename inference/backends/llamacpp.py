@@ -46,6 +46,34 @@ class LlamaCppBackend:
     async def loaded_models(self) -> list[str]:
         return []
 
+    async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+        if not settings.llamacpp_url:
+            raise InferenceError(
+                "BACKEND_NOT_CONFIGURED", "llama.cpp is not configured", False, 503
+            )
+        try:
+            response = await self._client.post(
+                f"{settings.llamacpp_url}/v1/embeddings",
+                json={"model": model, "input": inputs},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return [list(map(float, item["embedding"])) for item in data.get("data", [])]
+        except httpx.TimeoutException as exc:
+            raise InferenceError(
+                "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            retryable = exc.response.status_code >= 500
+            raise InferenceError(
+                "BACKEND_ERROR",
+                f"llama.cpp returned HTTP {exc.response.status_code}: {exc.response.text[:500]}",
+                retryable,
+                503 if retryable else 400,
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise InferenceError("BACKEND_UNAVAILABLE", str(exc), True, 503) from exc
+
     async def chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not settings.llamacpp_url:
             raise InferenceError(

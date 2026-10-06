@@ -46,6 +46,38 @@ class OllamaBackend:
         response.raise_for_status()
         return [str(item["name"]) for item in response.json().get("models", [])]
 
+    async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+        try:
+            vectors: list[list[float]] = []
+            for text in inputs:
+                response = await self._client.post(
+                    f"{settings.ollama_url}/api/embed",
+                    json={"model": model, "input": text},
+                )
+                response.raise_for_status()
+                data = response.json()
+                embeddings = data.get("embeddings") or []
+                if not embeddings:
+                    raise InferenceError("BACKEND_ERROR", "Ollama returned no embedding", True, 503)
+                vectors.append([float(value) for value in embeddings[0]])
+            return vectors
+        except httpx.TimeoutException as exc:
+            raise InferenceError(
+                "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            retryable = exc.response.status_code >= 500
+            raise InferenceError(
+                "BACKEND_ERROR",
+                f"Ollama returned HTTP {exc.response.status_code}: {exc.response.text[:500]}",
+                retryable,
+                503 if retryable else 400,
+            ) from exc
+        except InferenceError:
+            raise
+        except httpx.HTTPError as exc:
+            raise InferenceError("BACKEND_UNAVAILABLE", str(exc), True, 503) from exc
+
     async def chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             response = await self._client.post(

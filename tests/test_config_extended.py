@@ -13,7 +13,8 @@ def test_settings_parse_environment(monkeypatch) -> None:
     assert settings.max_concurrent_requests == 3
     assert settings.max_queue_size == 4
     assert settings.models == ("qwen3:1.7b", "qwen3:4b")
-    assert settings.ollama_models == settings.models
+    assert settings.inference_models == ("qwen3:1.7b", "qwen3:4b", "nomic-embed-text")
+    assert settings.ollama_models == settings.inference_models
 
 
 def test_settings_enforce_safe_minimums(monkeypatch) -> None:

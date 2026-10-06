@@ -31,6 +31,13 @@ class ChatCompletionRequest(BaseModel):
     keep_alive: str | int | None = None
 
 
+class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    model: str | None = None
+    input: str | list[str] = Field(min_length=1)
+    encoding_format: Literal["float", "base64"] | None = "float"
+
+
 class ModelInfo(BaseModel):
     id: str
     object: str = "model"

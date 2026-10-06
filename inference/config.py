@@ -48,6 +48,9 @@ class Settings:
         default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0))
     )
     default_model: str = field(default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b"))
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    )
     ollama_url: str = field(
         default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
     )
@@ -59,8 +62,12 @@ class Settings:
         return _csv("MODEL_REGISTRY", "qwen3:1.7b,qwen3:4b")
 
     @property
+    def inference_models(self) -> tuple[str, ...]:
+        return (*self.models, self.embedding_model)
+
+    @property
     def ollama_models(self) -> tuple[str, ...]:
-        return _csv("OLLAMA_MODELS", ",".join(self.models))
+        return _csv("OLLAMA_MODELS", ",".join(self.inference_models))
 
 
 settings = Settings()

@@ -15,7 +15,7 @@ from inference.metrics import render
 from inference.models import model_manager
 from inference.resources import status as resource_status
 from inference.scheduler import scheduler
-from inference.schemas import ChatCompletionRequest, ModelInfo
+from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
 
@@ -50,6 +50,32 @@ async def ready() -> dict[str, object]:
         **readiness,
     }
     return JSONResponse(content=body, status_code=200 if readiness["ready"] else 503)
+
+
+@router.post("/v1/embeddings")
+async def embeddings(
+    payload: EmbeddingRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    _auth(_bearer(authorization))
+    model = payload.model or settings.embedding_model
+    inputs = [payload.input] if isinstance(payload.input, str) else payload.input
+    try:
+        vectors = await scheduler.embeddings(model, inputs)
+    except InferenceError as exc:
+        raise HTTPException(
+            exc.status_code,
+            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+        ) from exc
+    return {
+        "object": "list",
+        "data": [
+            {"object": "embedding", "embedding": vector, "index": index}
+            for index, vector in enumerate(vectors)
+        ],
+        "model": model,
+        "usage": {"prompt_tokens": 0, "total_tokens": 0},
+    }
 
 
 @router.get("/v1/models", response_model=dict)

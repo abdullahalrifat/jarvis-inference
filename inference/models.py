@@ -27,7 +27,7 @@ class ModelManager:
         self._cold_requests = 0
 
     def validate(self, model: str) -> ModelSpec:
-        if model not in settings.models:
+        if model not in settings.inference_models:
             raise InferenceError(
                 "UNKNOWN_MODEL",
                 f"Unknown model '{model}'. Use one of: {', '.join(settings.models)}",
