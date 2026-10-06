@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-inference"
+version = "0.1.0"
+description = "Dedicated local inference gateway for the Jarvis stack"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "pydantic>=2.8,<3",
+  "psutil>=6,<8",
+  "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.24,<1",
+  "ruff>=0.6,<1",
+]
+
+[tool.setuptools.packages.find]
+include = ["inference*"]
+exclude = ["tests*", "docker*"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["inference"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
