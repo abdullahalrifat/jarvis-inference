@@ -11,7 +11,7 @@ import sys
 path = sys.argv[1]
 data = json.loads(subprocess.check_output(
     ["docker", "compose", "-f", "docker/docker-compose.yml", "exec", "-T",
-     "ollama", "curl", "-sf", "http://127.0.0.1:11434/api/tags"], text=True
+     "jarvis-inference", "python", "-c", "import urllib.request; print(urllib.request.urlopen(\"http://ollama:11434/api/tags\").read().decode())"], text=True
 ))
 digests = {m.get("name"): m.get("digest", "") for m in data.get("models", [])}
 result = []
