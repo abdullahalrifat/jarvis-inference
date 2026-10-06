@@ -21,7 +21,8 @@ The VM is intentionally provisioned slightly above the container budgets. Linux,
 1. Clone the repository.
 2. Copy .env.example to .env.
 3. Set INFERENCE_API_KEY before remote exposure.
-4. Run:
+4. For clients on another VM, set `INFERENCE_BIND_ADDRESS=0.0.0.0` in `.env`. The Compose default remains loopback for fail-closed local deployments.
+5. Run:
 
     bash scripts/config-doctor.sh
     bash scripts/install-optiplex.sh
@@ -37,7 +38,7 @@ The first lock operation is a deliberate trust ceremony. Preserve the resulting 
 
 Only the gateway should be reachable by AI Stack. Ollama port 11434 is never published.
 
-If the gateway is reachable outside the VM, require API-key authentication and TLS at the external boundary. Do not publish Prometheus metrics to the public internet.
+If the gateway is reachable outside the VM, require API-key authentication and TLS at the external boundary. Restrict TCP 8080 to the private network or trusted client IPs with the host/network firewall. Do not publish Prometheus metrics to the public internet.
 
 ## Operations commands
 
