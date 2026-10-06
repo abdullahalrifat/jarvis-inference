@@ -24,13 +24,13 @@ The VM is intentionally provisioned slightly above the container budgets. Linux,
 4. For clients on another VM, set `INFERENCE_BIND_ADDRESS=0.0.0.0` in `.env`. The Compose default remains loopback for fail-closed local deployments.
 5. Run:
 
-    bash scripts/config-doctor.sh
-    bash scripts/install-optiplex.sh
+    docker compose config --quiet
+    bash scripts/install.sh
 
 5. Inspect the model digests and run:
 
-    bash scripts/lock-models.sh
-    bash scripts/verify-models.sh
+    inspect models/manifest.yaml
+    inspect models/manifest.yaml
 
 The first lock operation is a deliberate trust ceremony. Preserve the resulting manifest and review any future digest change.
 
@@ -42,14 +42,14 @@ If the gateway is reachable outside the VM, require API-key authentication and T
 
 ## Operations commands
 
-    bash scripts/status-optiplex.sh
-    bash scripts/config-doctor.sh
+    docker compose ps
+    docker compose config --quiet
     bash scripts/watchdog.sh
-    bash scripts/backup.sh
-    bash scripts/restore.sh "$HOME/jarvis-inference-backups/latest"
-    bash scripts/upgrade-optiplex.sh <reviewed-ref>
-    bash scripts/rollback-optiplex.sh <known-good-sha>
-    bash scripts/verify-models.sh
+    back up .env and deployment configuration
+    restore the repository and .env from your backup
+    git pull --ff-only && bash scripts/install.sh
+    git checkout <known-good-sha> && bash scripts/install.sh
+    inspect models/manifest.yaml
 
 ## Resource policy
 
