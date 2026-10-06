@@ -60,7 +60,9 @@ class LlamaCppBackend:
             data = response.json()
             return [list(map(float, item["embedding"])) for item in data.get("data", [])]
         except httpx.TimeoutException as exc:
-            raise InferenceError("EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504) from exc
+            raise InferenceError(
+                "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(
