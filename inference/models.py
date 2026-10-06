@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from threading import Lock
 
@@ -11,13 +13,18 @@ class ModelSpec:
 
 
 class ModelManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self._lock = Lock()
         self._active: str | None = None
 
     def validate(self, model: str) -> ModelSpec:
         if model not in settings.models:
-            raise InferenceError("UNKNOWN_MODEL", f"Unknown model '{model}'", False, 400)
+            raise InferenceError(
+                "UNKNOWN_MODEL",
+                f"Unknown model '{model}'. Use one of: {', '.join(settings.models)}",
+                False,
+                400,
+            )
         return ModelSpec(model)
 
     def activate(self, model: str) -> None:
@@ -25,9 +32,13 @@ class ModelManager:
         with self._lock:
             self._active = model
 
-    def status(self) -> dict:
+    def status(self) -> dict[str, object]:
         with self._lock:
-            return {"active_model": self._active, "max_loaded_models": settings.max_loaded_models}
+            return {
+                "active_model": self._active,
+                "configured_models": list(settings.models),
+                "max_loaded_models": settings.max_loaded_models,
+            }
 
 
 model_manager = ModelManager()
