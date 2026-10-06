@@ -48,7 +48,9 @@ class Settings:
         default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0))
     )
     default_model: str = field(default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b"))
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text"))
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    )
     ollama_url: str = field(
         default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
     )
