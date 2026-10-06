@@ -1,9 +1,12 @@
 import psutil
+
 from .config import settings
 from .errors import InferenceError
 
+
 def memory_available_gb() -> float:
     return psutil.virtual_memory().available / (1024**3)
+
 
 def admit_request() -> None:
     available = memory_available_gb()
@@ -14,6 +17,7 @@ def admit_request() -> None:
             True,
             503,
         )
+
 
 def status() -> dict:
     vm = psutil.virtual_memory()
