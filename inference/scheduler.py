@@ -135,6 +135,7 @@ class Scheduler:
                     )
                     self.circuit.success()
                     self._record_circuit()
+                    model_manager.record_loaded(model)
                     usage = result.get("usage", {})
                     TOKENS.labels(model=model, kind="prompt").inc(
                         usage.get("prompt_tokens", 0)
@@ -217,6 +218,7 @@ class Scheduler:
                             yield line
                     self.circuit.success()
                     self._record_circuit()
+                    model_manager.record_loaded(model)
                     REQUESTS.labels(model=model, status="success").inc()
                 except asyncio.CancelledError:
                     raise
