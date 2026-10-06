@@ -13,7 +13,8 @@ from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
-from inference.resources import admit_request, status as resource_status
+from inference.resources import admit_request
+from inference.resources import status as resource_status
 from inference.scheduler import scheduler
 from inference.schemas import ChatCompletionRequest, ModelInfo
 

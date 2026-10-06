@@ -53,7 +53,7 @@ class Scheduler:
         except InferenceError:
             REQUESTS.labels(model=model, status="error").inc()
             raise
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             REQUESTS.labels(model=model, status="error").inc()
             raise InferenceError("MODEL_TIMEOUT", "Inference request timed out", True, 504) from exc
         except Exception as exc:
