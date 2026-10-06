@@ -38,6 +38,13 @@ if ! bash scripts/verify-models.sh; then
   docker compose -f docker/docker-compose.yml up -d ollama jarvis-inference
   exit 1
 fi
-bash scripts/smoke-test.sh
+if ! bash scripts/smoke-test.sh; then
+  echo "Smoke test failed; automatic rollback to $PREVIOUS."
+  git checkout --detach "$PREVIOUS"
+  docker compose -f docker/docker-compose.yml build jarvis-inference
+  docker compose -f docker/docker-compose.yml up -d ollama jarvis-inference
+  bash scripts/wait-ready.sh || true
+  exit 1
+fi
 rm -f "$STATE"
 echo "Upgrade succeeded: $PREVIOUS -> $(git rev-parse HEAD)"
