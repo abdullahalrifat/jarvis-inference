@@ -141,9 +141,7 @@ class Scheduler:
                     self._record_circuit()
                     model_manager.record_loaded(model)
                     usage = result.get("usage", {})
-                    TOKENS.labels(model=model, kind="prompt").inc(
-                        usage.get("prompt_tokens", 0)
-                    )
+                    TOKENS.labels(model=model, kind="prompt").inc(usage.get("prompt_tokens", 0))
                     TOKENS.labels(model=model, kind="completion").inc(
                         usage.get("completion_tokens", 0)
                     )
