@@ -28,10 +28,12 @@ awk -v v="$budget" 'BEGIN { exit !(v >= 8 && v <= 10) }' && ok "admission memory
 [[ "$concurrency" == "1" ]] && ok "single generation" || fail "MAX_CONCURRENT_REQUESTS must be 1"
 [[ "$loaded" == "1" ]] && ok "single loaded model" || fail "MAX_LOADED_MODELS must be 1"
 [[ "$queue" =~ ^[1-9][0-9]*$ ]] && (( queue <= 16 )) && ok "bounded queue $queue" || fail "queue must be 1-16"
-if [[ "${INFERENCE_HOST:-127.0.0.1}" != "127.0.0.1" && -z "${INFERENCE_API_KEY:-}" ]]; then
-  fail "INFERENCE_API_KEY is required for non-loopback binding"
+if "${COMPOSE[@]}" config | grep -q "127.0.0.1:"; then
+  ok "gateway is loopback-bound"
+elif [[ -z "${INFERENCE_API_KEY:-}" ]]; then
+  fail "INFERENCE_API_KEY is required for non-loopback published gateway"
 else
-  ok "gateway exposure/auth policy"
+  ok "remote gateway requires API-key authentication"
 fi
 free_gib="$(awk '/MemAvailable:/ {printf "%.1f", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)"
 disk_gib="$(df -Pk . | awk 'NR==2 {printf "%.1f", $4/1024/1024}')"
