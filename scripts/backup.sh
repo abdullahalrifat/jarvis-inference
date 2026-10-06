@@ -9,7 +9,7 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$BACKUP_DIR/$STAMP"
 mkdir -p "$OUT"
 chmod 700 "$BACKUP_DIR" "$OUT"
-tar -czf "$OUT/config.tar.gz" .env .env.example docker/docker-compose.yml docker/Dockerfile models/manifest.yaml pyproject.toml requirements.txt 2>/dev/null || true
+tar -czf "$OUT/config.tar.gz" .env .env.example docker/docker-compose.yml docker/Dockerfile models/manifest.yaml pyproject.toml requirements.txt 2>/dev/null
 git rev-parse HEAD > "$OUT/git-revision.txt"
 docker compose -f docker/docker-compose.yml config > "$OUT/compose-rendered.yml"
 sha256sum "$OUT/config.tar.gz" "$OUT/compose-rendered.yml" > "$OUT/SHA256SUMS"
