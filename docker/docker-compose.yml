@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.35.1@sha256:17e945f1aa6e4f6a1e91d0eab5f3f6a6e5a2f5f0b0b4c8f3a2d5a9e0c8a2f7f2
     container_name: jarvis-ollama
     restart: unless-stopped
     environment:
