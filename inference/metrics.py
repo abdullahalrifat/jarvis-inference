@@ -1,6 +1,7 @@
 from collections import Counter
 from threading import Lock
 
+
 class Metrics:
     def __init__(self):
         self._lock = Lock()
@@ -27,5 +28,6 @@ class Metrics:
                 f"inference_model_switches_total {self.model_switches}",
             ]
         return "\n".join(lines) + "\n"
+
 
 metrics = Metrics()
