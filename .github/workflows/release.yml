@@ -35,6 +35,14 @@ jobs:
           assert version == tag, (version, tag)
           PY
 
+      - name: Run release gates
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          python -m ruff check .
+          python -m ruff format --check .
+          python -m pytest -q --cov=inference --cov-fail-under=70
+
       - name: Build Python artifacts
         run: |
           python -m pip install --upgrade pip build
@@ -95,7 +103,7 @@ jobs:
       - name: Attest source SBOM
         uses: actions/attest@v4.2.2
         with:
-          subject-path: sbom.spdx.json
+          subject-path: dist
           sbom-path: sbom.spdx.json
 
       - name: Create GitHub release
