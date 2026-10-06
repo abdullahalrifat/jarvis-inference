@@ -26,5 +26,8 @@ dev = [
 include = ["inference*"]
 exclude = ["tests*", "docker*"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["inference"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
