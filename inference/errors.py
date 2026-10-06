@@ -1,5 +1,10 @@
+from __future__ import annotations
+
+
 class InferenceError(Exception):
-    def __init__(self, code: str, message: str, retryable: bool = False, status_code: int = 503):
+    def __init__(
+        self, code: str, message: str, retryable: bool = False, status_code: int = 503
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
