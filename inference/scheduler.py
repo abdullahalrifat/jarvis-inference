@@ -1,12 +1,13 @@
 import asyncio
 from typing import Any
+
 from .backends.llamacpp import LlamaCppBackend
 from .backends.ollama import OllamaBackend
 from .config import settings
-from .errors import InferenceError
 from .metrics import metrics
 from .models import model_manager
 from .resources import admit_request
+
 
 class Scheduler:
     def __init__(self):
@@ -35,5 +36,6 @@ class Scheduler:
             "queue_limit": settings.max_concurrent_requests,
             "backend": "llama.cpp" if settings.llamacpp_url else "ollama",
         }
+
 
 scheduler = Scheduler()
