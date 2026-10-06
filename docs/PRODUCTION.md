@@ -104,6 +104,20 @@ Run watchdog.sh from a systemd timer or cron every five minutes. It checks:
 
 The watchdog intentionally reports failures rather than trying to restart everything. Automatic restart policy belongs to Docker; destructive recovery should remain operator-controlled.
 
+## Watchdog installation with systemd
+
+If the deployment user can access the Docker socket:
+
+    mkdir -p ~/.config/systemd/user
+    cp deploy/systemd/user/jarvis-inference-watchdog.service ~/.config/systemd/user/
+    cp deploy/systemd/user/jarvis-inference-watchdog.timer ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now jarvis-inference-watchdog.timer
+
+Enable lingering if the user service must continue without an interactive login:
+
+    loginctl enable-linger "$USER"
+
 ## Benchmark policy
 
 After a runtime, Docker image or model update:
