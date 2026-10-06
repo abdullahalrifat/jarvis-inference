@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+
 def ratio(current: float, baseline: float) -> float:
     return current / baseline if baseline else 1.0
 
