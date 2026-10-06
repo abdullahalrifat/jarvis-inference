@@ -13,7 +13,6 @@ from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
-from inference.resources import admit_request
 from inference.resources import status as resource_status
 from inference.scheduler import scheduler
 from inference.schemas import ChatCompletionRequest, ModelInfo
@@ -85,7 +84,11 @@ async def chat(
         return StreamingResponse(
             _stream(body, request_id),
             media_type="text/event-stream",
-            headers={"X-Request-ID": request_id, "Cache-Control": "no-cache"},
+            headers={
+                "X-Request-ID": request_id,
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
     try:
         result = await scheduler.chat(body)
@@ -106,32 +109,29 @@ async def chat(
 async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
     model = str(body["model"])
     model_manager.validate(model)
-    async with scheduler._semaphore:
-        admit_request()
-        model_manager.activate(model)
-        backend = scheduler.backend
-        if backend.name == "ollama":
-            async for line in backend.stream(model, body):
-                data = backend.sse_data(line)
-                message = data.get("message") or {}
-                delta = {"content": message.get("content", "")}
-                if message.get("role"):
-                    delta["role"] = message["role"]
-                chunk = {
-                    "id": request_id,
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": delta,
-                            "finish_reason": "stop" if data.get("done") else None,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-        else:
-            async for line in backend.stream(model, body):
-                yield f"data: {line}\n\n"
-        yield "data: [DONE]\n\n"
+    backend = scheduler.backend
+    if backend.name == "ollama":
+        async for line in scheduler.stream(body):
+            data = backend.sse_data(line)
+            message = data.get("message") or {}
+            delta = {"content": message.get("content", "")}
+            if message.get("role"):
+                delta["role"] = message["role"]
+            chunk = {
+                "id": request_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": delta,
+                        "finish_reason": "stop" if data.get("done") else None,
+                    }
+                ],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+    else:
+        async for line in scheduler.stream(body):
+            yield f"data: {line}\n\n"
+    yield "data: [DONE]\n\n"
