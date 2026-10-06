@@ -11,7 +11,6 @@ from inference.metrics import metrics
 from inference.resources import status as resource_status
 from inference.scheduler import scheduler
 
-
 router = APIRouter()
 
 
