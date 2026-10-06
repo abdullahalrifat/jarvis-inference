@@ -41,12 +41,13 @@ async def health() -> dict[str, str]:
 @router.get("/ready")
 async def ready() -> dict[str, object]:
     readiness = await scheduler.readiness()
-    return {
+    body = {
         "status": "ready" if readiness["ready"] else "not_ready",
         "backend": scheduler.backend.name,
         "models": list(settings.models),
         **readiness,
     }
+    return JSONResponse(content=body, status_code=200 if readiness["ready"] else 503)
 
 
 @router.get("/v1/models", response_model=dict)
