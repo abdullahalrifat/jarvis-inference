@@ -18,11 +18,13 @@ if [[ -f .env ]]; then
 fi
 cpu="${OLLAMA_CPUS:-2.75}"
 mem="${OLLAMA_MEMORY_LIMIT:-9g}"
+budget="${MEMORY_BUDGET_GB:-10}"
 queue="${MAX_QUEUE_SIZE:-8}"
 concurrency="${MAX_CONCURRENT_REQUESTS:-1}"
 loaded="${MAX_LOADED_MODELS:-1}"
 awk -v v="$cpu" 'BEGIN { exit !(v >= 2.5 && v <= 3.0) }' && ok "Ollama CPU budget $cpu" || fail "Ollama CPU budget should be 2.5-3.0"
 [[ "$mem" =~ ^(8|9|10)g$ ]] && ok "Ollama memory budget $mem" || fail "Ollama memory should be 8g-10g"
+awk -v v="$budget" 'BEGIN { exit !(v >= 8 && v <= 10) }' && ok "admission memory budget $budget GiB" || fail "MEMORY_BUDGET_GB should be 8-10"
 [[ "$concurrency" == "1" ]] && ok "single generation" || fail "MAX_CONCURRENT_REQUESTS must be 1"
 [[ "$loaded" == "1" ]] && ok "single loaded model" || fail "MAX_LOADED_MODELS must be 1"
 [[ "$queue" =~ ^[1-9][0-9]*$ ]] && (( queue <= 16 )) && ok "bounded queue $queue" || fail "queue must be 1-16"
