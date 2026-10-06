@@ -1,7 +1,10 @@
 from typing import Any
+
 import httpx
+
 from ..config import settings
 from ..errors import InferenceError
+
 
 class LlamaCppBackend:
     name = "llama.cpp"
