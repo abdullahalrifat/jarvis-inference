@@ -150,7 +150,9 @@ class OllamaBackend:
                 {
                     "index": 0,
                     "message": normalized_message,
-                    "finish_reason": data.get("done_reason", "stop"),
+                    "finish_reason": "tool_calls"
+                    if message.get("tool_calls")
+                    else data.get("done_reason", "stop"),
                 }
             ],
             "usage": {
