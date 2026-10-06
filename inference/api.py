@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from inference.config import settings
 from inference.errors import InferenceError
@@ -59,7 +59,9 @@ async def models(authorization: str | None = Header(default=None)) -> dict[str, 
 
 
 @router.get("/v1/inference/status")
-async def inference_status(authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def inference_status(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     _auth(_bearer(authorization))
     return {"runtime": scheduler.status(), "resources": resource_status()}
 
@@ -98,7 +100,7 @@ async def chat(
     result.setdefault("object", "chat.completion")
     result.setdefault("choices", [])
     result.setdefault("usage", {})
-    return result
+    return JSONResponse(content=result, headers={"X-Request-ID": request_id})
 
 
 async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
