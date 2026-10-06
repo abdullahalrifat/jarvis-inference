@@ -1,15 +1,21 @@
+from __future__ import annotations
+
 import hmac
+import json
 import time
 import uuid
+from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Header, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from inference.config import settings
 from inference.errors import InferenceError
-from inference.metrics import metrics
-from inference.resources import status as resource_status
+from inference.metrics import render
+from inference.models import model_manager
+from inference.resources import admit_request, status as resource_status
 from inference.scheduler import scheduler
+from inference.schemas import ChatCompletionRequest, ModelInfo
 
 router = APIRouter()
 
@@ -20,45 +26,71 @@ def _auth(value: str | None) -> None:
 
 
 def _bearer(value: str | None) -> str | None:
-    return value.removeprefix("Bearer ") if value else None
+    return value.removeprefix("Bearer ").strip() if value else None
+
+
+def _request_id(request: Request) -> str:
+    return request.headers.get("X-Request-ID") or f"chatcmpl-{uuid.uuid4().hex}"
 
 
 @router.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok", "service": "jarvis-inference"}
 
 
-@router.get("/v1/models")
-async def models(authorization: str | None = Header(default=None)):
+@router.get("/ready")
+async def ready() -> dict[str, object]:
+    backend_ok = await scheduler.readiness()
+    return {
+        "status": "ready" if backend_ok else "not_ready",
+        "backend": scheduler.backend.name,
+        "models": list(settings.models),
+    }
+
+
+@router.get("/v1/models", response_model=dict)
+async def models(authorization: str | None = Header(default=None)) -> dict[str, object]:
     _auth(_bearer(authorization))
-    return {"object": "list", "data": [
-        {"id": model, "object": "model", "owned_by": "jarvis-inference"}
-        for model in settings.models
-    ]}
+    return {
+        "object": "list",
+        "data": [ModelInfo(id=model).model_dump() for model in settings.models],
+    }
 
 
 @router.get("/v1/inference/status")
-async def inference_status(authorization: str | None = Header(default=None)):
+async def inference_status(authorization: str | None = Header(default=None)) -> dict[str, object]:
     _auth(_bearer(authorization))
     return {"runtime": scheduler.status(), "resources": resource_status()}
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
-async def prometheus_metrics():
-    return metrics.render()
+async def prometheus_metrics() -> PlainTextResponse:
+    return PlainTextResponse(render().decode())
 
 
 @router.post("/v1/chat/completions")
-async def chat(payload: dict, authorization: str | None = Header(default=None)):
+async def chat(
+    payload: ChatCompletionRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> object:
     _auth(_bearer(authorization))
-    request_id = f"chatcmpl-{uuid.uuid4().hex}"
+    request_id = _request_id(request)
+    body = payload.model_dump(exclude_none=True)
+    body["model"] = body.get("model") or settings.default_model
+    if payload.stream:
+        return StreamingResponse(
+            _stream(body, request_id),
+            media_type="text/event-stream",
+            headers={"X-Request-ID": request_id, "Cache-Control": "no-cache"},
+        )
     try:
-        result = await scheduler.chat(payload)
+        result = await scheduler.chat(body)
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
             detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
-            headers={"X-Inference-Request-ID": request_id},
+            headers={"X-Request-ID": request_id},
         ) from exc
     result.setdefault("id", request_id)
     result.setdefault("created", int(time.time()))
@@ -66,3 +98,35 @@ async def chat(payload: dict, authorization: str | None = Header(default=None)):
     result.setdefault("choices", [])
     result.setdefault("usage", {})
     return result
+
+
+async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
+    model = str(body["model"])
+    model_manager.validate(model)
+    async with scheduler._semaphore:
+        admit_request()
+        model_manager.activate(model)
+        backend = scheduler.backend
+        if backend.name == "ollama":
+            async for line in backend.stream(model, body):
+                data = backend.sse_data(line)
+                message = data.get("message") or {}
+                delta = {"content": message.get("content", "")}
+                if message.get("role"):
+                    delta["role"] = message["role"]
+                chunk = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": delta,
+                        "finish_reason": "stop" if data.get("done") else None,
+                    }],
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+        else:
+            async for line in backend.stream(model, body):
+                yield f"data: {line}\n\n"
+        yield "data: [DONE]\n\n"
