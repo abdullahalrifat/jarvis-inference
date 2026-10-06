@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from inference.scheduler import Scheduler
 from inference.models import model_manager
+from inference.scheduler import Scheduler
 
 
 class LoadBackend:
