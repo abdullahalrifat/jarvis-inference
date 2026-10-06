@@ -6,5 +6,6 @@ __pycache__/
 .coverage
 .env
 *.pyc
-# Python packaging
 *.egg-info/
+benchmarks/*.json
+.upgrade-state

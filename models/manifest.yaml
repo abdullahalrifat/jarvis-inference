@@ -1,0 +1,12 @@
+version: 1
+models:
+  - name: qwen3:1.7b
+    role: default
+    required: true
+    digest: ""
+    max_context: 8192
+  - name: qwen3:4b
+    role: reasoning
+    required: true
+    digest: ""
+    max_context: 8192
