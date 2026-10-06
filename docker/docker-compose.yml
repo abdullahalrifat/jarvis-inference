@@ -43,7 +43,7 @@ services:
       ollama:
         condition: service_healthy
     ports:
-      - "${INFERENCE_BIND_ADDRESS:-0.0.0.0}:${INFERENCE_PORT:-8080}:8080"
+      - "${INFERENCE_BIND_ADDRESS:-127.0.0.1}:${INFERENCE_PORT:-8080}:8080"
     cpus: ${INFERENCE_CPUS:-0.50}
     mem_limit: ${INFERENCE_MEMORY_LIMIT:-512m}
     pids_limit: 128
