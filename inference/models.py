@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from threading import Lock
+
 from .config import settings
 from .errors import InferenceError
+
 
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
+
 
 class ModelManager:
     def __init__(self):
@@ -25,5 +28,6 @@ class ModelManager:
     def status(self) -> dict:
         with self._lock:
             return {"active_model": self._active, "max_loaded_models": settings.max_loaded_models}
+
 
 model_manager = ModelManager()
