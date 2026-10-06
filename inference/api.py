@@ -60,7 +60,13 @@ async def embeddings(
     _auth(_bearer(authorization))
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
-    vectors = await scheduler.embeddings(model, inputs)
+    try:
+        vectors = await scheduler.embeddings(model, inputs)
+    except InferenceError as exc:
+        raise HTTPException(
+            exc.status_code,
+            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+        ) from exc
     return {
         "object": "list",
         "data": [
