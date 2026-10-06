@@ -1,7 +1,11 @@
-from inference.resources import status
+from inference.resources import memory_available_gb, status
 
 
-def test_resource_status_has_expected_fields():
+def test_resource_status_has_expected_fields() -> None:
     result = status()
-    assert "memory_available_gb" in result
-    assert "cpu_count" in result
+    assert "container_memory_available_gb" in result
+    assert result["cpu_count"]
+
+
+def test_memory_is_non_negative() -> None:
+    assert memory_available_gb() >= 0
