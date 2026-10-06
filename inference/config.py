@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -20,5 +21,6 @@ class Settings:
         return tuple(x.strip() for x in os.getenv(
             "MODEL_REGISTRY", "qwen3-1.7b,qwen3-4b,qwen3-7b"
         ).split(",") if x.strip())
+
 
 settings = Settings()
