@@ -57,9 +57,9 @@ models/manifest.yaml is the deployment lock file.
 
 The workflow is:
 
-    bash scripts/download-models.sh
-    bash scripts/lock-models.sh
-    bash scripts/verify-models.sh
+    docker compose exec ollama ollama list
+    inspect models/manifest.yaml
+    inspect models/manifest.yaml
 
 The first lock operation is a deliberate trust ceremony. Review the installed model digest before committing the manifest. Future deployments fail if the installed digest differs from the locked digest.
 
@@ -73,8 +73,8 @@ An empty digest is intentionally considered unpinned and is rejected by verify-m
 
 Set INFERENCE_API_KEY before remote exposure, then:
 
-    bash scripts/config-doctor.sh
-    bash scripts/install-optiplex.sh
+    docker compose config --quiet
+    bash scripts/install.sh
 
 Only the gateway is published. Ollama port 11434 is never published.
 
@@ -82,30 +82,30 @@ Only the gateway is published. Ollama port 11434 is never published.
 
 Configuration:
 
-    bash scripts/config-doctor.sh
-    bash scripts/status-optiplex.sh
+    docker compose config --quiet
+    docker compose ps
 
 Readiness:
 
-    bash scripts/wait-ready.sh
+    curl http://127.0.0.1:${INFERENCE_PORT:-8080}/ready
 
 Models:
 
-    bash scripts/download-models.sh
-    bash scripts/verify-models.sh
+    docker compose exec ollama ollama list
+    inspect models/manifest.yaml
 
 Backup:
 
-    bash scripts/backup.sh
-    bash scripts/restore.sh "$HOME/jarvis-inference-backups/latest"
+    back up .env and deployment configuration
+    restore the repository and .env from your backup
 
 Upgrade:
 
-    bash scripts/upgrade-optiplex.sh <reviewed-ref>
+    git pull --ff-only && bash scripts/install.sh
 
 Rollback:
 
-    bash scripts/rollback-optiplex.sh <known-good-sha>
+    git checkout <known-good-sha> && bash scripts/install.sh
 
 Watchdog:
 
@@ -143,7 +143,7 @@ Normal backups contain:
 
 Model data is excluded by default because it is large and reproducible. For a full model-volume backup:
 
-    BACKUP_MODELS=1 bash scripts/backup.sh
+    BACKUP_MODELS=1 back up .env and deployment configuration
 
 See docs/PRODUCTION.md, docs/RUNBOOK.md and docs/DISASTER-RECOVERY.md for the complete operating procedures.
 
