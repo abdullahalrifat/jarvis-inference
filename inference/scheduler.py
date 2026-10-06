@@ -146,7 +146,9 @@ class Scheduler:
                     REQUESTS.labels(model=model, status="error").inc()
                     raise
                 except TimeoutError as exc:
-                    error = InferenceError("EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504)
+                    error = InferenceError(
+                        "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
+                    )
                     self._backend_failure(error)
                     REQUESTS.labels(model=model, status="error").inc()
                     raise error from exc
