@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+COMPOSE=(docker compose -f docker/docker-compose.yml)
 BACKUP_DIR="${BACKUP_DIR:-$HOME/jarvis-inference-backups}"
 BACKUP_MODELS="${BACKUP_MODELS:-0}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
