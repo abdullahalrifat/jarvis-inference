@@ -39,7 +39,7 @@ class OllamaBackend:
     @staticmethod
     def _canonical_model_name(name: str) -> str:
         """Normalize Ollama's implicit :latest tag to the API model ID."""
-        return name[:-len(":latest")] if name.endswith(":latest") else name
+        return name[: -len(":latest")] if name.endswith(":latest") else name
 
     async def available_models(self) -> list[str]:
         response = await self._client.get(f"{settings.ollama_url}/api/tags", timeout=3)
