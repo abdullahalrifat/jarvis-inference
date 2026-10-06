@@ -13,7 +13,7 @@ for arg in "$@"; do
 done
 command -v docker >/dev/null || { echo "Docker is required." >&2; exit 1; }
 [[ -f "$MANIFEST" ]] || { echo "Missing $MANIFEST" >&2; exit 1; }
-"\${COMPOSE[@]}" exec -T ollama ollama list >/dev/null
+"${COMPOSE[@]}" exec -T ollama ollama list >/dev/null
 python3 - "$MANIFEST" "$ALLOW_UNPINNED" <<'PY'
 import json
 import subprocess
