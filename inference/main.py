@@ -19,5 +19,5 @@ async def lifespan(_: FastAPI):
         pass
 
 
-app = FastAPI(title="Jarvis Inference", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Jarvis Inference", version="0.3.0", lifespan=lifespan)
 app.include_router(router)
