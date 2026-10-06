@@ -36,6 +36,16 @@ class LlamaCppBackend:
         except httpx.HTTPError:
             return False
 
+    async def available_models(self) -> list[str]:
+        if not settings.llamacpp_url:
+            return []
+        response = await self._client.get(f"{settings.llamacpp_url}/v1/models", timeout=3)
+        response.raise_for_status()
+        return [str(item["id"]) for item in response.json().get("data", [])]
+
+    async def loaded_models(self) -> list[str]:
+        return []
+
     async def chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not settings.llamacpp_url:
             raise InferenceError(
