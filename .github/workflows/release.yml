@@ -17,11 +17,10 @@ env:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.6.0
         with:
           python-version: "3.11"
 
@@ -41,6 +40,7 @@ jobs:
           pip install -e '.[dev]'
           python -m ruff check .
           python -m ruff format --check .
+          bash -n scripts/*.sh
           python -m pytest -q --cov=inference --cov-fail-under=70
 
       - name: Build Python artifacts
@@ -49,7 +49,7 @@ jobs:
           python -m build
 
       - name: Generate source SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: spdx-json
@@ -57,7 +57,7 @@ jobs:
           upload-release-assets: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -65,7 +65,7 @@ jobs:
 
       - name: Build and publish container
         id: image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6
         with:
           context: .
           file: docker/Dockerfile
@@ -78,7 +78,7 @@ jobs:
             org.opencontainers.image.version=${{ github.ref_name }}
 
       - name: Generate container SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           format: spdx-json
@@ -86,7 +86,7 @@ jobs:
           upload-release-assets: false
 
       - name: Scan container
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           severity: CRITICAL
@@ -94,14 +94,14 @@ jobs:
           exit-code: "1"
 
       - name: Attest container provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned release
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
 
       - name: Attest source SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned release
         with:
           subject-path: dist
           sbom-path: sbom.spdx.json
@@ -110,4 +110,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}"             --title "${{ github.ref_name }}"             --generate-notes             dist/* sbom.spdx.json container-sbom.spdx.json
+          gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes dist/* sbom.spdx.json container-sbom.spdx.json
