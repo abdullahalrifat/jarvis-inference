@@ -13,8 +13,12 @@ fi
 docker compose -f docker/docker-compose.yml down || true
 tar -xzf "$SOURCE/config.tar.gz" -C "$ROOT"
 if [[ "$RESTORE_MODELS" == "1" && -f "$SOURCE/ollama-volume.tar.gz" ]]; then
-  docker volume create jarvis-inference_ollama >/dev/null
-  docker run --rm -v jarvis-inference_ollama:/target -v "$SOURCE:/backup:ro" alpine:3.22 sh -c 'rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true; tar -xzf /backup/ollama-volume.tar.gz -C /target'
+  "${COMPOSE[@]}" up -d ollama
+  CID="$("${COMPOSE[@]}" ps -q ollama)"
+  docker cp "$SOURCE/ollama-volume.tar.gz" "$CID:/tmp/ollama-volume.tar.gz"
+  docker exec "$CID" sh -c 'rm -rf /root/.ollama/* /root/.ollama/.[!.]* /root/.ollama/..?* 2>/dev/null || true'
+  docker exec "$CID" tar -xzf /tmp/ollama-volume.tar.gz -C /root/.ollama
+  docker exec "$CID" rm -f /tmp/ollama-volume.tar.gz
 fi
 docker compose -f docker/docker-compose.yml up -d ollama jarvis-inference
 bash scripts/config-doctor.sh
