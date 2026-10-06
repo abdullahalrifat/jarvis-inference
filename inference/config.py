@@ -67,7 +67,7 @@ class Settings:
 
     @property
     def ollama_models(self) -> tuple[str, ...]:
-        return _csv("OLLAMA_MODELS", ",".join(self.models))
+        return _csv("OLLAMA_MODELS", ",".join(self.inference_models))
 
 
 settings = Settings()
