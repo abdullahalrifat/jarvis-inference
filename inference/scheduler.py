@@ -178,14 +178,13 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         started: float | None = None
+        first_token: float | None = None
         try:
             try:
                 warm = await self._prepare(model)
             except InferenceError as exc:
                 self._backend_failure(exc)
                 raise
-        first_token: float | None = None
-        try:
             async with self._semaphore:
                 QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
                 try:
