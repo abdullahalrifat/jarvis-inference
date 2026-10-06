@@ -76,3 +76,8 @@ async def test_backend_close() -> None:
     backend = OllamaBackend()
     await backend.close()
     assert backend._client.is_closed
+
+
+def test_ollama_canonicalizes_latest_tag() -> None:
+    assert OllamaBackend._canonical_model_name("nomic-embed-text:latest") == "nomic-embed-text"
+    assert OllamaBackend._canonical_model_name("qwen3:4b") == "qwen3:4b"
