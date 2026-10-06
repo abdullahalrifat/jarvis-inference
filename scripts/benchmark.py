@@ -15,7 +15,9 @@ def percentile(values: list[float], p: float) -> float:
     return ordered[index]
 
 
-def request(\n    base: str, model: str, token_limit: int, key: str, keep_alive: str | int | None\n) -> dict:
+def request(
+    base: str, model: str, token_limit: int, key: str, keep_alive: str | int | None
+) -> dict:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "Reply with exactly: benchmark-ok"}],
