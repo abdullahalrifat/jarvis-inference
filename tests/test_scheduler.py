@@ -14,7 +14,7 @@ class FakeBackend:
         return True
 
     async def available_models(self) -> list[str]:
-        return ["qwen3:1.7b", "qwen3:4b", "nomic-embed-text"]
+        return ["qwen3:1.7b", "qwen3:4b", "nomic-embed-text:latest"]
 
     async def loaded_models(self) -> list[str]:
         return ["qwen3:1.7b"]
