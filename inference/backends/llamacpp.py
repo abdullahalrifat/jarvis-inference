@@ -24,7 +24,9 @@ class LlamaCppBackend:
 
     async def chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not settings.llamacpp_url:
-            raise InferenceError("BACKEND_NOT_CONFIGURED", "llama.cpp is not configured", False, 503)
+            raise InferenceError(
+                "BACKEND_NOT_CONFIGURED", "llama.cpp is not configured", False, 503
+            )
         body = dict(payload)
         body["model"] = model
         try:
@@ -41,7 +43,9 @@ class LlamaCppBackend:
 
     async def stream(self, model: str, payload: dict[str, Any]) -> AsyncIterator[str]:
         if not settings.llamacpp_url:
-            raise InferenceError("BACKEND_NOT_CONFIGURED", "llama.cpp is not configured", False, 503)
+            raise InferenceError(
+                "BACKEND_NOT_CONFIGURED", "llama.cpp is not configured", False, 503
+            )
         body = dict(payload)
         body["model"] = model
         body["stream"] = True

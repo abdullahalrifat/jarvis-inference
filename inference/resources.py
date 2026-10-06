@@ -16,7 +16,10 @@ def _read_int(path: Path) -> int | None:
 
 
 def memory_limit_bytes() -> int | None:
-    for path in (Path("/sys/fs/cgroup/memory.max"), Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")):
+    for path in (
+        Path("/sys/fs/cgroup/memory.max"),
+        Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    ):
         value = _read_int(path)
         if value is not None and value < 1 << 60:
             return value

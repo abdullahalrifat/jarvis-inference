@@ -120,11 +120,13 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": delta,
-                        "finish_reason": "stop" if data.get("done") else None,
-                    }],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": "stop" if data.get("done") else None,
+                        }
+                    ],
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
         else:

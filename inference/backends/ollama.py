@@ -83,14 +83,16 @@ class OllamaBackend:
         completion = int(data.get("eval_count") or 0)
         return {
             "model": model,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": message.get("role", "assistant"),
-                    "content": message.get("content", ""),
-                },
-                "finish_reason": "stop",
-            }],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": message.get("role", "assistant"),
+                        "content": message.get("content", ""),
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": prompt,
                 "completion_tokens": completion,

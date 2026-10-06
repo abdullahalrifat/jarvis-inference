@@ -15,7 +15,11 @@ def test_ollama_body_uses_concrete_model_name() -> None:
 def test_ollama_normalization() -> None:
     result = OllamaBackend._normalize(
         "qwen3:4b",
-        {"message": {"role": "assistant", "content": "ok"}, "prompt_eval_count": 3, "eval_count": 2},
+        {
+            "message": {"role": "assistant", "content": "ok"},
+            "prompt_eval_count": 3,
+            "eval_count": 2,
+        },
     )
     assert result["choices"][0]["message"]["content"] == "ok"
     assert result["usage"]["total_tokens"] == 5
