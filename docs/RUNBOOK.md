@@ -1,43 +1,53 @@
-# Operations runbook
+# Runbook
 
-## Daily
+## Health
 
-- Check container status and gateway readiness.
-- Check free disk and available RAM.
-- Confirm model verification remains green.
-- Review inference errors and circuit-breaker openings.
+From the inference VM:
 
-## Weekly
+```bash
+docker compose ps
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/ready
+```
 
-- Run a warm benchmark for qwen3:1.7b.
-- Benchmark qwen3:4b when it is actively used.
-- Review TTFT, p95 latency, throughput and resource trends.
-- Confirm backups exist.
+From a client VM:
 
-## Monthly
+```bash
+curl http://<INFERENCE_IP>:8080/ready
+```
 
-- Review dependency and security updates.
-- Review Docker base-image and Ollama digest updates.
-- Perform a restore drill.
-- Review model registry changes before accepting a new digest.
+## Restart
 
-## Safe model update
+Restart only the gateway when the application is unhealthy:
 
-1. Pull the candidate model explicitly.
-2. Record the reported digest.
-3. Benchmark cold and warm behavior.
-4. Compare against the current baseline.
-5. Update models/manifest.yaml.
-6. Deploy through upgrade-optiplex.
+```bash
+docker compose restart jarvis-inference
+```
 
-## Capacity policy
+Restart the full stack when Ollama itself is unhealthy:
 
-This VM is intentionally single-generation. A second concurrent generation is a capacity regression unless a benchmark on the real hardware proves otherwise.
+```bash
+docker compose restart ollama jarvis-inference
+```
 
-Preferred optimization order:
+## Update
 
-1. Keep one model loaded.
-2. Keep routine traffic on qwen3:1.7b.
-3. Use qwen3:4b when reasoning quality justifies latency.
-4. Tune context length for actual workloads.
-5. Increase CPU/RAM only after measurements show it is useful.
+```bash
+git pull --ff-only
+bash scripts/install.sh
+```
+
+The installer rebuilds the gateway and preserves the Ollama model volume.
+
+## Networking
+
+If clients receive connection refused, verify:
+
+```bash
+docker ps
+hostname -I
+```
+
+The gateway must publish 8080 as `0.0.0.0:8080->8080/tcp` for cross-VM access. Set `INFERENCE_BIND_ADDRESS=0.0.0.0` in `.env`.
+
+Keep the host firewall restricted to trusted private-network clients.
