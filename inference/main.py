@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .api import router
+from inference.api import router
 
 
 app = FastAPI(title="Jarvis Inference", version="0.1.0")
