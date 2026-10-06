@@ -4,12 +4,12 @@
 
 Inspect:
 
-    bash scripts/status-optiplex.sh
-    bash scripts/wait-ready.sh
+    docker compose ps
+    curl http://127.0.0.1:${INFERENCE_PORT:-8080}/ready
 
 If only the gateway is unhealthy:
 
-    docker compose -f docker/docker-compose.yml restart jarvis-inference
+    docker compose -f docker-compose.yml restart jarvis-inference
 
 ## Bad release
 
@@ -21,7 +21,7 @@ Use the automatic rollback from upgrade-optiplex. For manual recovery:
 
 Restore the latest configuration backup:
 
-    bash scripts/restore.sh "$HOME/jarvis-inference-backups/latest"
+    restore the repository and .env from your backup
 
 Then run config-doctor and verify-models.
 
@@ -29,8 +29,8 @@ Then run config-doctor and verify-models.
 
 Recreate the volume and re-download models:
 
-    bash scripts/download-models.sh
-    bash scripts/verify-models.sh
+    docker compose exec ollama ollama list
+    inspect models/manifest.yaml
 
 If the locked digest cannot be obtained from the registry, do not accept a different digest automatically.
 
