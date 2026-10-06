@@ -59,7 +59,11 @@ class Settings:
 
     @property
     def models(self) -> tuple[str, ...]:
-        return _csv("MODEL_REGISTRY", "qwen3:1.7b,qwen3:4b,nomic-embed-text")
+        return _csv("MODEL_REGISTRY", "qwen3:1.7b,qwen3:4b")
+
+    @property
+    def inference_models(self) -> tuple[str, ...]:
+        return (*self.models, self.embedding_model)
 
     @property
     def ollama_models(self) -> tuple[str, ...]:
