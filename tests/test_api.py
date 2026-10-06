@@ -59,3 +59,13 @@ def test_readiness_shape(monkeypatch) -> None:
     response = TestClient(app).get("/ready")
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_readiness_returns_503_when_backend_not_ready(monkeypatch) -> None:
+    async def fake_readiness() -> dict:
+        return {"ready": False, "reason": "backend_unhealthy"}
+
+    monkeypatch.setattr(scheduler, "readiness", fake_readiness)
+    response = TestClient(app).get("/ready")
+    assert response.status_code == 503
+    assert response.json()["reason"] == "backend_unhealthy"
