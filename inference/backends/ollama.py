@@ -36,6 +36,16 @@ class OllamaBackend:
         except httpx.HTTPError:
             return False
 
+    async def available_models(self) -> list[str]:
+        response = await self._client.get(f"{settings.ollama_url}/api/tags", timeout=3)
+        response.raise_for_status()
+        return [str(item["name"]) for item in response.json().get("models", [])]
+
+    async def loaded_models(self) -> list[str]:
+        response = await self._client.get(f"{settings.ollama_url}/api/ps", timeout=3)
+        response.raise_for_status()
+        return [str(item["name"]) for item in response.json().get("models", [])]
+
     async def chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             response = await self._client.post(
@@ -97,7 +107,7 @@ class OllamaBackend:
         for source, target in mapping.items():
             if payload.get(source) is not None:
                 options[target] = payload[source]
-        body = {
+        body: dict[str, Any] = {
             "model": model,
             "messages": payload.get("messages", []),
             "stream": stream,
@@ -105,7 +115,17 @@ class OllamaBackend:
             "options": options,
         }
         if payload.get("stop") is not None:
-            body["options"]["stop"] = payload["stop"]
+            options["stop"] = payload["stop"]
+        if payload.get("tools") is not None:
+            body["tools"] = payload["tools"]
+        if payload.get("tool_choice") is not None:
+            body["tool_choice"] = payload["tool_choice"]
+        response_format = payload.get("response_format")
+        if response_format:
+            if response_format.get("type") == "json_object":
+                body["format"] = "json"
+            elif response_format.get("type") == "json_schema":
+                body["format"] = response_format.get("json_schema", {}).get("schema")
         return body
 
     @staticmethod
@@ -113,16 +133,24 @@ class OllamaBackend:
         message = data.get("message") or {}
         prompt = int(data.get("prompt_eval_count") or 0)
         completion = int(data.get("eval_count") or 0)
+        normalized_message: dict[str, Any] = {
+            "role": message.get("role", "assistant"),
+            "content": message.get("content", ""),
+        }
+        if message.get("tool_calls"):
+            normalized_message["tool_calls"] = message["tool_calls"]
+        inference = {
+            "load_seconds": (data.get("load_duration") or 0) / 1e9,
+            "generation_seconds": (data.get("eval_duration") or 0) / 1e9,
+            "total_seconds": (data.get("total_duration") or 0) / 1e9,
+        }
         return {
             "model": model,
             "choices": [
                 {
                     "index": 0,
-                    "message": {
-                        "role": message.get("role", "assistant"),
-                        "content": message.get("content", ""),
-                    },
-                    "finish_reason": "stop",
+                    "message": normalized_message,
+                    "finish_reason": data.get("done_reason", "stop"),
                 }
             ],
             "usage": {
@@ -130,6 +158,7 @@ class OllamaBackend:
                 "completion_tokens": completion,
                 "total_tokens": prompt + completion,
             },
+            "_inference": inference,
         }
 
     @staticmethod
