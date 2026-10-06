@@ -69,6 +69,7 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=64)
     args = parser.parse_args()
 
+    unload_probe = request(args.base_url, args.model, args.max_tokens, args.api_key, 0)
     cold = request(args.base_url, args.model, args.max_tokens, args.api_key, 0)
     warm = [
         request(args.base_url, args.model, args.max_tokens, args.api_key, "30m")
@@ -79,6 +80,7 @@ def main() -> None:
     throughput = [item["tokens_per_second"] for item in warm if item["tokens_per_second"]]
     result = {
         "model": args.model,
+        "unload_probe": unload_probe,
         "cold": cold,
         "warm": {
             "runs": len(warm),
