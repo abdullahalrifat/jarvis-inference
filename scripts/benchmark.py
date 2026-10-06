@@ -20,7 +20,7 @@ def request(base: str, model: str, token_limit: int, key: str, keep_alive: str |
         "model": model,
         "messages": [{"role": "user", "content": "Reply with exactly: benchmark-ok"}],
         "max_tokens": token_limit,
-        "stream": False,
+        "stream": True,
     }
     if keep_alive is not None:
         payload["keep_alive"] = keep_alive
@@ -34,13 +34,27 @@ def request(base: str, model: str, token_limit: int, key: str, keep_alive: str |
         headers=headers,
         method="POST",
     )
+    first_token = None
+    usage: dict = {}
     with urlopen(req, timeout=900) as response:
-        data = json.load(response)
+        for raw in response:
+            line = raw.decode().strip()
+            if not line.startswith("data: "):
+                continue
+            data_text = line[6:]
+            if data_text == "[DONE]":
+                break
+            data = json.loads(data_text)
+            if first_token is None:
+                first_token = time.perf_counter()
+            if data.get("usage"):
+                usage = data["usage"]
     elapsed = time.perf_counter() - started
-    usage = data.get("usage", {})
     completion = int(usage.get("completion_tokens") or 0)
+    ttft = first_token - started if first_token is not None else elapsed
     return {
         "latency_seconds": elapsed,
+        "ttft_seconds": ttft,
         "completion_tokens": completion,
         "tokens_per_second": completion / elapsed if completion else 0.0,
     }
