@@ -8,12 +8,12 @@ version = "0.3.0"
 description = "Production-grade local inference gateway for the Jarvis stack"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.115,<1",
-  "httpx>=0.27,<1",
-  "prometheus-client>=0.21,<1",
-  "pydantic>=2.8,<3",
-  "psutil>=6,<8",
-  "uvicorn[standard]>=0.30,<1",
+  "fastapi==0.142.2",
+  "httpx==0.28.1",
+  "prometheus-client==0.26.0",
+  "pydantic==2.13.5",
+  "psutil==7.2.2",
+  "uvicorn[standard]==0.54.0",
 ]
 
 [project.optional-dependencies]

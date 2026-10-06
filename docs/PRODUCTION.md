@@ -1,54 +1,60 @@
 # Production deployment
 
-## Target VM
+## Dedicated inference VM
 
-Run inference in its own VM so CPU scheduling and memory pressure are isolated from AI Stack and unrelated services.
+Recommended CPU-only profile:
 
-Recommended Proxmox starting point:
+- 4 vCPU
+- 10-12 GiB RAM
+- Ollama: 2.75 CPU / 9 GiB RAM
+- Gateway: 0.50 CPU / 512 MiB RAM
+- SSD-backed Ollama volume
+- One active generation and one loaded model
 
-- 4 vCPU assigned to the VM.
-- 10-12 GiB VM RAM.
-- Ollama container: 2.75 CPU and 9 GiB RAM.
-- Gateway container: 0.50 CPU and 512 MiB RAM.
-- SSD-backed Ollama volume.
-- No GPU is assumed.
-- One active generation and one loaded model.
+## Install
 
-The VM is intentionally provisioned slightly above the container budgets. Linux, Docker, filesystem cache and upgrades need headroom.
+```bash
+git clone https://github.com/abdullahalrifat/jarvis-inference.git
+cd jarvis-inference
+cp .env.example .env
+```
 
-## First installation
+For cross-VM access:
 
-1. Clone the repository.
-2. Copy .env.example to .env.
-3. Set INFERENCE_API_KEY before remote exposure.
-4. Run:
+```env
+INFERENCE_BIND_ADDRESS=0.0.0.0
+INFERENCE_API_KEY=<long-random-secret>
+```
 
-    bash scripts/config-doctor.sh
-    bash scripts/install-optiplex.sh
+Restrict TCP 8080 to the private network or trusted client IPs. Never publish Ollama port 11434.
 
-5. Inspect the model digests and run:
+Run:
 
-    bash scripts/lock-models.sh
-    bash scripts/verify-models.sh
+```bash
+bash scripts/install.sh
+```
 
-The first lock operation is a deliberate trust ceremony. Preserve the resulting manifest and review any future digest change.
+The installer validates the deployment, builds the gateway, starts Ollama, ensures configured models exist, waits for readiness, and runs smoke checks.
 
-## Networking
+## Operations
 
-Only the gateway should be reachable by AI Stack. Ollama port 11434 is never published.
+```bash
+docker compose ps
+docker compose logs --tail=100 jarvis-inference
+docker compose logs --tail=100 ollama
+docker compose restart jarvis-inference
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/ready
+```
 
-If the gateway is reachable outside the VM, require API-key authentication and TLS at the external boundary. Do not publish Prometheus metrics to the public internet.
+Upgrade:
 
-## Operations commands
+```bash
+git pull --ff-only
+bash scripts/install.sh
+```
 
-    bash scripts/status-optiplex.sh
-    bash scripts/config-doctor.sh
-    bash scripts/watchdog.sh
-    bash scripts/backup.sh
-    bash scripts/restore.sh "$HOME/jarvis-inference-backups/latest"
-    bash scripts/upgrade-optiplex.sh <reviewed-ref>
-    bash scripts/rollback-optiplex.sh <known-good-sha>
-    bash scripts/verify-models.sh
+The Ollama named volume is preserved across gateway rebuilds.
 
 ## Resource policy
 
@@ -64,83 +70,19 @@ If the gateway is reachable outside the VM, require API-key authentication and T
 | Queue | 8 |
 | Loaded models | 1 |
 | Context | 8192 |
-| Keep alive | 30m |
 
-The single-generation policy is intentional for a CPU-only deployment. Do not increase concurrency merely because the API queue is non-empty.
+## Model integrity
 
-## Upgrade transaction
+`models/manifest.yaml` records production model identities and reviewed digests. Do not silently change a recorded digest.
 
-upgrade-optiplex performs:
+The installer pulls only the configured model names from `.env`; model digest changes should be reviewed separately before updating the manifest.
 
-1. Clean-tree validation.
-2. Configuration backup.
-3. Preflight checks.
-4. Fetch of the target revision.
-5. Gateway image rebuild.
-6. Service restart.
-7. Readiness check.
-8. Model digest verification.
-9. Smoke test.
-10. Automatic rollback if build, readiness or model verification fails.
+## Security
 
-For explicit recovery, rollback-optiplex can restore a known-good commit.
-
-## Backups
-
-Normal backups include the environment file, deployment configuration, model manifest, rendered Compose configuration, Git revision and SHA-256 checksums.
-
-Model-volume backup is optional because model data is large. Enable it with BACKUP_MODELS=1 when external registry access is unreliable or before major model changes.
-
-Backup archives contain secrets because .env may contain the API key. Keep them mode 0700 and outside Git.
-
-## Watchdog
-
-Run watchdog.sh from a systemd timer or cron every five minutes. It checks:
-
-- free disk;
-- available RAM;
-- both inference containers;
-- gateway readiness.
-
-The watchdog intentionally reports failures rather than trying to restart everything. Automatic restart policy belongs to Docker; destructive recovery should remain operator-controlled.
-
-## Watchdog installation with systemd
-
-If the deployment user can access the Docker socket:
-
-    mkdir -p ~/.config/systemd/user
-    cp deploy/systemd/user/jarvis-inference-watchdog.service ~/.config/systemd/user/
-    cp deploy/systemd/user/jarvis-inference-watchdog.timer ~/.config/systemd/user/
-    systemctl --user daemon-reload
-    systemctl --user enable --now jarvis-inference-watchdog.timer
-
-Enable lingering if the user service must continue without an interactive login:
-
-    loginctl enable-linger "$USER"
-
-## Benchmark policy
-
-After a runtime, Docker image or model update:
-
-    bash scripts/benchmark.sh qwen3:1.7b
-
-Benchmark JSON is saved under benchmarks/ and ignored by Git. Keep a known-good baseline outside the repository and compare candidates with:
-
-    python3 scripts/benchmark-regression.py baseline.json candidate.json
-
-Default rejection thresholds are 20% latency, 25% TTFT and 15% throughput regression. Tune these from several real runs on the dedicated VM.
-
-## Model lifecycle
-
-The model manifest records the Ollama digest for each production model.
-
-Safe update:
-
-1. Pull the candidate model explicitly.
-2. Inspect its digest.
-3. Benchmark it.
-4. Compare against the known-good baseline.
-5. Update the manifest deliberately.
-6. Deploy through the transaction process.
-
-Never silently replace a digest.
+- Loopback binding is the default.
+- Remote binding is explicit.
+- Remote deployments require API-key authentication.
+- Ollama is never published.
+- Gateway runs non-root, read-only and with no-new-privileges.
+- Container images are pinned by digest.
+- Keep port 8080 private and do not expose metrics publicly.

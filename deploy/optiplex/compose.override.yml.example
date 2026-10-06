@@ -1,9 +1,0 @@
-services:
-  jarvis-inference:
-    networks:
-      - default
-      - jarvis-ai
-
-networks:
-  jarvis-ai:
-    external: true
