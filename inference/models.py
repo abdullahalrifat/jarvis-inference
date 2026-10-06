@@ -36,15 +36,15 @@ class ModelManager:
             )
         return ModelSpec(model)
 
-    async def refresh(self, backend: Any, force: bool = False) -> None:
+    async def refresh(self, backend: Any, force: bool = False) -> bool:
         now = time.monotonic()
         if not force and now - self._last_refresh < settings.model_refresh_seconds:
-            return
+            return True
         try:
             available = set(await backend.available_models())
             loaded = set(await backend.loaded_models())
         except Exception:
-            return
+            return False
         with self._lock:
             previously_loaded = self._loaded
             self._available = available
@@ -54,13 +54,16 @@ class ModelManager:
                 self._last_load[model] = now
             for model in previously_loaded - loaded:
                 self._last_unload[model] = now
+        return True
 
     async def ensure_available(self, backend: Any, model: str) -> bool:
         self.validate(model)
-        await self.refresh(backend)
+        refreshed = await self.refresh(backend)
+        if not refreshed:
+            raise InferenceError("BACKEND_UNAVAILABLE", "Unable to query backend model state", True, 503)
         with self._lock:
             available = model in self._available
-        if not available and self._available:
+        if not available:
             raise InferenceError(
                 "MODEL_UNAVAILABLE",
                 f"Model '{model}' is configured but not installed on the backend",
