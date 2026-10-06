@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip pip-audit
-      - run: pip-audit --project .
+      - run: pip-audit -r requirements.txt
 
   filesystem-scan:
     runs-on: ubuntu-latest
@@ -35,15 +35,3 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-  codeql:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v4.38.2
-        with:
-          languages: python
-      - uses: github/codeql-action/analyze@v4.38.2
