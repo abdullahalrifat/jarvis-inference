@@ -19,6 +19,9 @@ class FakeBackend:
             "usage": {"prompt_tokens": 2, "completion_tokens": 3},
         }
 
+    async def stream(self, model: str, payload: dict):
+        yield '{"message":{"role":"assistant","content":"ok"},"done":true}'
+
 
 class FailingBackend(FakeBackend):
     async def chat(self, model: str, payload: dict) -> dict:
@@ -50,6 +53,15 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_uses_scheduler_lifecycle(scheduler: Scheduler) -> None:
+    scheduler._ollama = FakeBackend()
+    chunks = [chunk async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})]
+
+    assert chunks
+    assert scheduler.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
 async def test_unknown_model_is_rejected(scheduler: Scheduler) -> None:
     with pytest.raises(InferenceError, match="Unknown model") as exc:
         await scheduler.chat({"model": "not-real", "messages": []})
@@ -72,10 +84,7 @@ async def test_backend_exception_is_normalized(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_timeout_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
     scheduler._ollama = SlowBackend()
-    monkeypatch.setattr(
-        "inference.scheduler.settings.request_timeout_seconds",
-        0.001,
-    )
+    monkeypatch.setattr("inference.scheduler.settings.request_timeout_seconds", 0.001)
 
     with pytest.raises(InferenceError) as exc:
         await scheduler.chat({"model": "qwen3:1.7b", "messages": []})
