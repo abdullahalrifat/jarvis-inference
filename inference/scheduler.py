@@ -111,6 +111,57 @@ class Scheduler:
         self._check_circuit()
         return await model_manager.ensure_available(self.backend, model)
 
+    async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+        model_manager.validate(model)
+        if model != settings.embedding_model:
+            raise InferenceError(
+                "INVALID_EMBEDDING_MODEL",
+                f"Model '{model}' is not configured as the embedding model",
+                False,
+                400,
+            )
+        self._enqueue()
+        enqueued = time.perf_counter()
+        try:
+            warm = await self._prepare(model)
+            async with self._semaphore:
+                QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
+                admit_request()
+                model_manager.activate(model, warm)
+                ACTIVE_MODEL.labels(model=model).set(1)
+                ACTIVE_REQUESTS.inc()
+                started = time.perf_counter()
+                try:
+                    vectors = await asyncio.wait_for(
+                        self.backend.embeddings(model, inputs),
+                        timeout=settings.request_timeout_seconds,
+                    )
+                    self.circuit.success()
+                    self._record_circuit()
+                    model_manager.record_loaded(model)
+                    REQUESTS.labels(model=model, status="success").inc()
+                    return vectors
+                except InferenceError as exc:
+                    self._backend_failure(exc)
+                    REQUESTS.labels(model=model, status="error").inc()
+                    raise
+                except TimeoutError as exc:
+                    error = InferenceError("EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504)
+                    self._backend_failure(error)
+                    REQUESTS.labels(model=model, status="error").inc()
+                    raise error from exc
+                except Exception as exc:
+                    error = InferenceError("INFERENCE_ERROR", str(exc), True, 503)
+                    self._backend_failure(error)
+                    REQUESTS.labels(model=model, status="error").inc()
+                    raise error from exc
+                finally:
+                    ACTIVE_REQUESTS.dec()
+                    ACTIVE_MODEL.labels(model=model).set(0)
+                    LATENCY.labels(model=model).observe(time.perf_counter() - started)
+        finally:
+            await self._release()
+
     async def chat(self, payload: dict[str, Any]) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         self._enqueue()
