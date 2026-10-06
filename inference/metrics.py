@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
+from inference.models import model_manager
+from inference.resources import status as resource_status
+
 REQUESTS = Counter("inference_requests_total", "Inference requests.", ["model", "status"])
 LATENCY = Histogram("inference_request_duration_seconds", "Inference request duration.", ["model"])
 QUEUE_WAIT = Histogram(
@@ -42,7 +45,23 @@ CIRCUIT_STATE = Gauge(
     ["backend"],
 )
 ACTIVE_MODEL = Gauge("inference_active_model", "Whether the model is active.", ["model"])
+MODEL_WARM = Gauge("inference_model_warm", "Whether the model is currently warm.", ["model"])
+HOST_MEMORY_AVAILABLE = Gauge(
+    "inference_host_memory_available_gib", "Available host memory in GiB."
+)
+CONTAINER_MEMORY_AVAILABLE = Gauge(
+    "inference_container_memory_available_gib", "Available inference-container memory in GiB."
+)
+CPU_PERCENT = Gauge("inference_host_cpu_percent", "Host CPU utilization percentage.")
 
 
 def render() -> bytes:
+    resources = resource_status()
+    HOST_MEMORY_AVAILABLE.set(float(resources["host_memory_available_gb"]))
+    CONTAINER_MEMORY_AVAILABLE.set(float(resources["container_memory_available_gb"]))
+    CPU_PERCENT.set(float(resources["cpu_percent"]))
+    state = model_manager.status()
+    warm = set(state["warm_models"])
+    for model in state["configured_models"]:
+        MODEL_WARM.labels(model=model).set(1 if model in warm else 0)
     return generate_latest()
