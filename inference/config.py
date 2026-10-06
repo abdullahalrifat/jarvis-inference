@@ -25,9 +25,7 @@ class Settings:
         default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
     )
     max_queue_size: int = field(default_factory=lambda: max(0, _int("MAX_QUEUE_SIZE", 8)))
-    max_loaded_models: int = field(
-        default_factory=lambda: max(1, _int("MAX_LOADED_MODELS", 1))
-    )
+    max_loaded_models: int = field(default_factory=lambda: max(1, _int("MAX_LOADED_MODELS", 1)))
     memory_budget_gb: float = field(
         default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0))
     )
@@ -45,9 +43,7 @@ class Settings:
         default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
-    ollama_keep_alive: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "10m")
-    )
+    ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "10m"))
 
     @property
     def models(self) -> tuple[str, ...]:
