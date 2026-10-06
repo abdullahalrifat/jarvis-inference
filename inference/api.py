@@ -41,6 +41,8 @@ async def health() -> dict[str, str]:
 @router.get("/ready")
 async def ready() -> dict[str, object]:
     readiness = await scheduler.readiness()
+    if isinstance(readiness, bool):
+        readiness = {"ready": readiness}
     body = {
         "status": "ready" if readiness["ready"] else "not_ready",
         "backend": scheduler.backend.name,
