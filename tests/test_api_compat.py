@@ -23,7 +23,7 @@ def test_tools_and_structured_output_are_openai_compatible(monkeypatch) -> None:
                                 "type": "function",
                                 "function": {
                                     "name": "get_weather",
-                                    "arguments": "{\"city\":\"Tokyo\"}",
+                                    "arguments": '{"city":"Tokyo"}',
                                 },
                             }
                         ],
