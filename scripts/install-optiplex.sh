@@ -12,9 +12,5 @@ for _ in {1..60}; do
   if docker compose -f docker/docker-compose.yml exec -T ollama ollama list >/dev/null 2>&1; then break; fi
   sleep 2
 done
-models="$(grep '^OLLAMA_MODELS=' .env | cut -d= -f2- || true)"
-for model in $models; do
-  echo "Ensuring model is installed: $model"
-  docker compose -f docker/docker-compose.yml exec -T ollama ollama pull "$model"
-done
+./scripts/download-models.sh
 ./scripts/smoke-test.sh

@@ -13,7 +13,6 @@ from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
-from inference.resources import admit_request
 from inference.resources import status as resource_status
 from inference.scheduler import scheduler
 from inference.schemas import ChatCompletionRequest, ModelInfo
@@ -41,12 +40,16 @@ async def health() -> dict[str, str]:
 
 @router.get("/ready")
 async def ready() -> dict[str, object]:
-    backend_ok = await scheduler.readiness()
-    return {
-        "status": "ready" if backend_ok else "not_ready",
+    readiness = await scheduler.readiness()
+    if isinstance(readiness, bool):
+        readiness = {"ready": readiness}
+    body = {
+        "status": "ready" if readiness["ready"] else "not_ready",
         "backend": scheduler.backend.name,
         "models": list(settings.models),
+        **readiness,
     }
+    return JSONResponse(content=body, status_code=200 if readiness["ready"] else 503)
 
 
 @router.get("/v1/models", response_model=dict)
@@ -67,7 +70,10 @@ async def inference_status(
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
-async def prometheus_metrics() -> PlainTextResponse:
+async def prometheus_metrics(
+    authorization: str | None = Header(default=None),
+) -> PlainTextResponse:
+    _auth(_bearer(authorization))
     return PlainTextResponse(render().decode())
 
 
@@ -85,7 +91,11 @@ async def chat(
         return StreamingResponse(
             _stream(body, request_id),
             media_type="text/event-stream",
-            headers={"X-Request-ID": request_id, "Cache-Control": "no-cache"},
+            headers={
+                "X-Request-ID": request_id,
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
     try:
         result = await scheduler.chat(body)
@@ -95,6 +105,7 @@ async def chat(
             detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
             headers={"X-Request-ID": request_id},
         ) from exc
+    result.pop("_inference", None)
     result.setdefault("id", request_id)
     result.setdefault("created", int(time.time()))
     result.setdefault("object", "chat.completion")
@@ -106,32 +117,37 @@ async def chat(
 async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
     model = str(body["model"])
     model_manager.validate(model)
-    async with scheduler._semaphore:
-        admit_request()
-        model_manager.activate(model)
-        backend = scheduler.backend
+    backend = scheduler.backend
+    async for line in scheduler.stream(body):
         if backend.name == "ollama":
-            async for line in backend.stream(model, body):
-                data = backend.sse_data(line)
-                message = data.get("message") or {}
-                delta = {"content": message.get("content", "")}
-                if message.get("role"):
-                    delta["role"] = message["role"]
-                chunk = {
-                    "id": request_id,
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": delta,
-                            "finish_reason": "stop" if data.get("done") else None,
-                        }
-                    ],
+            data = backend.sse_data(line)
+            message = data.get("message") or {}
+            delta: dict[str, object] = {"content": message.get("content", "")}
+            if message.get("role"):
+                delta["role"] = message["role"]
+            if message.get("tool_calls"):
+                delta["tool_calls"] = message["tool_calls"]
+            chunk = {
+                "id": request_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": delta,
+                        "finish_reason": data.get("done_reason") if data.get("done") else None,
+                    }
+                ],
+            }
+            if data.get("done") and data.get("eval_count") is not None:
+                chunk["usage"] = {
+                    "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                    "completion_tokens": int(data.get("eval_count") or 0),
+                    "total_tokens": int(data.get("prompt_eval_count") or 0)
+                    + int(data.get("eval_count") or 0),
                 }
-                yield f"data: {json.dumps(chunk)}\n\n"
+            yield f"data: {json.dumps(chunk)}\n\n"
         else:
-            async for line in backend.stream(model, body):
-                yield f"data: {line}\n\n"
-        yield "data: [DONE]\n\n"
+            yield f"data: {line}\n\n"
+    yield "data: [DONE]\n\n"

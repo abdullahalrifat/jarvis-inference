@@ -21,7 +21,7 @@ def test_ready_reports_not_ready(monkeypatch) -> None:
     monkeypatch.setattr("inference.api.scheduler.readiness", unhealthy)
     response = TestClient(app).get("/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
 
 

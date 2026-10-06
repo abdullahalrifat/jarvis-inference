@@ -20,4 +20,4 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: python -m ruff check .
       - run: python -m ruff format --check .
-      - run: python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=65
+      - run: python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=70

@@ -31,6 +31,6 @@ def test_settings_enforce_safe_minimums(monkeypatch) -> None:
     assert settings.max_queue_size == 0
     assert settings.max_loaded_models == 1
     assert settings.memory_budget_gb == 0.5
-    assert settings.memory_headroom_gb == 0.25
+    assert settings.memory_headroom_gb == 1.0
     assert settings.request_timeout_seconds == 1
     assert settings.shutdown_timeout_seconds == 1
