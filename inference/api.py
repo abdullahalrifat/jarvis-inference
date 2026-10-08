@@ -83,9 +83,10 @@ async def embeddings(
             },
             headers={"X-Request-ID": request_id},
         ) from exc
-    return {
-        "object": "list",
-        "data": [
+    return JSONResponse(
+        content={
+            "object": "list",
+            "data": [
             {
                 "object": "embedding",
                 "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
@@ -94,8 +95,10 @@ async def embeddings(
             for index, vector in enumerate(vectors)
         ],
         "model": model,
-        "usage": {"prompt_tokens": 0, "total_tokens": 0},
-    }
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        },
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @router.get("/v1/models", response_model=dict)
