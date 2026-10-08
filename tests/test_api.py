@@ -49,6 +49,19 @@ def test_success_preserves_request_id(monkeypatch) -> None:
     assert captured["request_id"] == "req-test-123"
 
 
+def test_capabilities_advertise_protocol_and_models() -> None:
+    response = TestClient(app).get("/v1/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["protocol"]["current"] == 1
+    assert "chat" in body["features"]
+    assert {
+        "id": "nomic-embed-text",
+        "capabilities": ["embeddings"],
+    } in body["models"]
+    assert body["limits"]["queue_timeout_seconds"] > 0
+
+
 def test_metrics_requires_auth_when_configured(monkeypatch) -> None:
     monkeypatch.setattr("inference.api.settings.api_key", "secret")
     response = TestClient(app).get("/metrics")

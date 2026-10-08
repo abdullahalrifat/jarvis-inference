@@ -66,12 +66,13 @@ async def embeddings(
     payload: EmbeddingRequest,
     request: Request,
     authorization: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> JSONResponse:
     _auth(_bearer(authorization))
+    request_id = _request_id(request)
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
     try:
-        vectors = await scheduler.embeddings(model, inputs, request_id=_request_id(request))
+        vectors = await scheduler.embeddings(model, inputs, request_id=request_id)
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
@@ -80,20 +81,24 @@ async def embeddings(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
+            headers={"X-Request-ID": request_id},
         ) from exc
-    return {
-        "object": "list",
-        "data": [
-            {
-                "object": "embedding",
-                "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
-                "index": index,
-            }
-            for index, vector in enumerate(vectors)
-        ],
-        "model": model,
-        "usage": {"prompt_tokens": 0, "total_tokens": 0},
-    }
+    return JSONResponse(
+        content={
+            "object": "list",
+            "data": [
+                {
+                    "object": "embedding",
+                    "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
+                    "index": index,
+                }
+                for index, vector in enumerate(vectors)
+            ],
+            "model": model,
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        },
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @router.get("/v1/models", response_model=dict)
@@ -102,6 +107,39 @@ async def models(authorization: str | None = Header(default=None)) -> dict[str, 
     return {
         "object": "list",
         "data": [ModelInfo(id=model).model_dump() for model in settings.models],
+    }
+
+
+@router.get("/v1/capabilities", response_model=dict)
+async def capabilities(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Advertise the inference protocol and model capabilities."""
+    _auth(_bearer(authorization))
+    chat_models = list(settings.models)
+    models = []
+    for model in chat_models:
+        models.append({"id": model, "capabilities": ["chat", "streaming"]})
+    models.append({"id": settings.embedding_model, "capabilities": ["embeddings"]})
+    return {
+        "protocol": {"current": 1, "min_client": 1, "max_client": 1},
+        "service": "jarvis-inference",
+        "features": [
+            "chat",
+            "streaming",
+            "embeddings",
+            "model_catalog",
+            "request_ids",
+        ],
+        "models": models,
+        "limits": {
+            "max_concurrent_requests": settings.max_concurrent_requests,
+            "max_queue_size": settings.max_queue_size,
+            "queue_timeout_seconds": settings.queue_timeout_seconds,
+            "chat_timeout_seconds": settings.chat_timeout_seconds,
+            "stream_timeout_seconds": settings.stream_timeout_seconds,
+            "embedding_timeout_seconds": settings.embedding_timeout_seconds,
+        },
     }
 
 
