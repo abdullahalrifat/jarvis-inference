@@ -86,15 +86,17 @@ async def embeddings(
     return JSONResponse(
         content={
             "object": "list",
-        "data": [
-            {
-                "object": "embedding",
-                "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
-                "index": index,
-            }
-            for index, vector in enumerate(vectors)
-        ],
-        "model": model,
+            "data": [
+                {
+                    "object": "embedding",
+                    "embedding": _encode_embedding(
+                        vector, payload.encoding_format or "float"
+                    ),
+                    "index": index,
+                }
+                for index, vector in enumerate(vectors)
+            ],
+            "model": model,
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         },
         headers={"X-Request-ID": request_id},
