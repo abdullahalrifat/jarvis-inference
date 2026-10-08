@@ -64,13 +64,14 @@ async def ready() -> dict[str, object]:
 @router.post("/v1/embeddings")
 async def embeddings(
     payload: EmbeddingRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
     _auth(_bearer(authorization))
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
     try:
-        vectors = await scheduler.embeddings(model, inputs)
+        vectors = await scheduler.embeddings(model, inputs, request_id=_request_id(request))
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
@@ -155,7 +156,7 @@ async def chat(
             },
         )
     try:
-        result = await scheduler.chat(body)
+        result = await scheduler.chat(body, request_id=request_id)
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
@@ -179,7 +180,7 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
-    async for line in scheduler.stream(body):
+    async for line in scheduler.stream(body, request_id=request_id):
         if backend.name == "ollama":
             data = backend.sse_data(line)
             message = data.get("message") or {}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from threading import Lock
@@ -17,6 +18,7 @@ class ModelSpec:
 class ModelManager:
     def __init__(self) -> None:
         self._lock = Lock()
+        self._refresh_lock = asyncio.Lock()
         self._active: str | None = None
         self._available: set[str] = set()
         self._loaded: set[str] = set()
@@ -47,24 +49,26 @@ class ModelManager:
         return ModelSpec(model)
 
     async def refresh(self, backend: Any, force: bool = False) -> bool:
-        now = time.monotonic()
-        if not force and now - self._last_refresh < settings.model_refresh_seconds:
+        async with self._refresh_lock:
+            now = time.monotonic()
+            if not force and now - self._last_refresh < settings.model_refresh_seconds:
+                return True
+            try:
+                available = set(await backend.available_models())
+                loaded = set(await backend.loaded_models())
+            except Exception:
+                return False
+            now = time.monotonic()
+            with self._lock:
+                previously_loaded = self._loaded
+                self._available = available
+                self._loaded = loaded
+                self._last_refresh = now
+                for model in loaded - previously_loaded:
+                    self._last_load[model] = now
+                for model in previously_loaded - loaded:
+                    self._last_unload[model] = now
             return True
-        try:
-            available = set(await backend.available_models())
-            loaded = set(await backend.loaded_models())
-        except Exception:
-            return False
-        with self._lock:
-            previously_loaded = self._loaded
-            self._available = available
-            self._loaded = loaded
-            self._last_refresh = now
-            for model in loaded - previously_loaded:
-                self._last_load[model] = now
-            for model in previously_loaded - loaded:
-                self._last_unload[model] = now
-        return True
 
     async def ensure_available(self, backend: Any, model: str) -> bool:
         self.validate(model)
@@ -75,6 +79,7 @@ class ModelManager:
             )
         with self._lock:
             available = model in self._available
+            warm = model in self._loaded
         if not available:
             raise InferenceError(
                 "MODEL_UNAVAILABLE",
@@ -82,8 +87,7 @@ class ModelManager:
                 True,
                 503,
             )
-        with self._lock:
-            return model in self._loaded
+        return warm
 
     def activate(self, model: str, warm: bool) -> None:
         self.validate(model)
