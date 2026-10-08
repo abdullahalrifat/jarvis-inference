@@ -38,3 +38,19 @@ async def test_llamacpp_health_is_false_when_not_configured(monkeypatch) -> None
 
     assert await backend.health() is False
     await backend.close()
+
+
+@pytest.mark.asyncio
+async def test_llamacpp_health_rejects_error_status(monkeypatch) -> None:
+    class ErrorResponse:
+        status_code = 404
+
+    class ErrorClient:
+        async def get(self, url: str, timeout: float = 0) -> ErrorResponse:
+            return ErrorResponse()
+
+    monkeypatch.setattr("inference.backends.llamacpp.settings.llamacpp_url", "http://llama")
+    backend = LlamaCppBackend()
+    backend._client = ErrorClient()
+
+    assert await backend.health() is False
