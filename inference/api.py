@@ -105,6 +105,35 @@ async def models(authorization: str | None = Header(default=None)) -> dict[str, 
     }
 
 
+@router.get("/v1/capabilities", response_model=dict)
+async def capabilities(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    """Advertise the inference protocol and model capabilities."""
+    _auth(_bearer(authorization))
+    chat_models = list(settings.models)
+    return {
+        "protocol": {
+            "current": 1,
+            "min_client": 1,
+            "max_client": 1,
+        },
+        "service": "jarvis-inference",
+        "features": ["chat", "streaming", "embeddings", "model_catalog", "request_ids"],
+        "models": [
+            {"id": model, "capabilities": ["chat", "streaming"]}
+            for model in chat_models
+        ]
+        + [{"id": settings.embedding_model, "capabilities": ["embeddings"]}],
+        "limits": {
+            "max_concurrent_requests": settings.max_concurrent_requests,
+            "max_queue_size": settings.max_queue_size,
+            "queue_timeout_seconds": settings.queue_timeout_seconds,
+            "chat_timeout_seconds": settings.chat_timeout_seconds,
+            "stream_timeout_seconds": settings.stream_timeout_seconds,
+            "embedding_timeout_seconds": settings.embedding_timeout_seconds,
+        },
+    }
+
+
 @router.get("/v1/inference/status")
 async def inference_status(
     authorization: str | None = Header(default=None),
