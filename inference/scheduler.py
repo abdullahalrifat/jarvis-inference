@@ -106,8 +106,11 @@ class Scheduler:
         if completion and generation:
             TOKENS_PER_SECOND.labels(model=model).observe(completion / generation)
 
-    async def _prepare(self, model: str) -> bool:
-        model_manager.validate_chat(model)
+    async def _prepare(self, model: str, *, chat: bool = True) -> bool:
+        if chat:
+            model_manager.validate_chat(model)
+        else:
+            model_manager.validate(model)
         self._check_circuit()
         return await model_manager.ensure_available(self.backend, model)
 
@@ -123,7 +126,7 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         try:
-            warm = await self._prepare(model)
+            warm = await self._prepare(model, chat=False)
             async with self._semaphore:
                 QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
                 try:
