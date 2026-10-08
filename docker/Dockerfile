@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY inference ./inference
 RUN pip install --no-cache-dir .
+RUN python -m compileall -q inference
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
