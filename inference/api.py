@@ -89,9 +89,7 @@ async def embeddings(
             "data": [
                 {
                     "object": "embedding",
-                    "embedding": _encode_embedding(
-                        vector, payload.encoding_format or "float"
-                    ),
+                    "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
                     "index": index,
                 }
                 for index, vector in enumerate(vectors)
