@@ -96,6 +96,9 @@ if [[ -n "$api_key" ]]; then
   curl --fail --silent --show-error \
     -H "Authorization: Bearer $api_key" \
     "http://127.0.0.1:$port/v1/models" >/dev/null
+else
+  curl --fail --silent --show-error \
+    "http://127.0.0.1:$port/v1/models" >/dev/null
 fi
 
 echo

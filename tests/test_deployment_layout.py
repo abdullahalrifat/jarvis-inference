@@ -1,7 +1,6 @@
 from pathlib import Path
 import subprocess
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -28,5 +27,5 @@ def test_install_script_has_valid_shell_syntax() -> None:
 def test_remote_gateway_configuration_is_documented() -> None:
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "INFERENCE_BIND_ADDRESS=0.0.0.0" in env_example
+    assert "INFERENCE_BIND_ADDRESS=127.0.0.1" in env_example
     assert "INFERENCE_BIND_ADDRESS:-127.0.0.1" in compose

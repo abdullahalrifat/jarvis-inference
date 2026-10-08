@@ -66,7 +66,10 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_stream_uses_scheduler_lifecycle(scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
-    chunks = [chunk async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})]
+    chunks = [
+        chunk
+        async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})
+    ]
 
     assert chunks
     assert scheduler.status()["queue_depth"] == 0
@@ -119,7 +122,9 @@ async def test_queue_full_returns_retryable_error(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resource_pressure_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
+async def test_resource_pressure_is_normalized(
+    monkeypatch, scheduler: Scheduler
+) -> None:
     scheduler._ollama = FakeBackend()
     monkeypatch.setattr(
         "inference.scheduler.admit_request",
@@ -143,7 +148,9 @@ async def test_readiness_reports_model_availability(scheduler: Scheduler) -> Non
 
 
 @pytest.mark.asyncio
-async def test_cancellation_releases_queue_and_active_slot(scheduler: Scheduler) -> None:
+async def test_cancellation_releases_queue_and_active_slot(
+    scheduler: Scheduler,
+) -> None:
     class BlockingBackend(FakeBackend):
         async def chat(self, model: str, payload: dict) -> dict:
             await asyncio.sleep(10)
@@ -158,3 +165,41 @@ async def test_cancellation_releases_queue_and_active_slot(scheduler: Scheduler)
         await task
 
     assert scheduler.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_embedding_resource_pressure_is_counted(
+    monkeypatch, scheduler: Scheduler
+) -> None:
+    scheduler._ollama = FakeBackend()
+    monkeypatch.setattr(
+        "inference.scheduler.admit_request",
+        lambda: (_ for _ in ()).throw(
+            InferenceError("RESOURCE_PRESSURE", "not enough memory", True, 503)
+        ),
+    )
+
+    with pytest.raises(InferenceError) as exc:
+        await scheduler.embeddings("nomic-embed-text", ["hello"])
+
+    assert exc.value.code == "RESOURCE_PRESSURE"
+    assert scheduler.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_readiness_fails_when_model_state_refresh_fails(
+    scheduler: Scheduler,
+) -> None:
+    scheduler._ollama = FakeBackend()
+
+    async def broken_refresh(backend, force=False) -> bool:
+        return False
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(model_manager, "refresh", broken_refresh)
+    try:
+        result = await scheduler.readiness()
+    finally:
+        monkeypatch.undo()
+
+    assert result == {"ready": False, "reason": "model_state_unavailable"}

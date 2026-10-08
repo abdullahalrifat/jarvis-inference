@@ -36,6 +36,16 @@ class ModelManager:
             )
         return ModelSpec(model)
 
+    def validate_chat(self, model: str) -> ModelSpec:
+        if model not in settings.models:
+            raise InferenceError(
+                "UNKNOWN_MODEL",
+                f"Unknown model '{model}'. Use one of: {', '.join(settings.models)}",
+                False,
+                400,
+            )
+        return ModelSpec(model)
+
     async def refresh(self, backend: Any, force: bool = False) -> bool:
         now = time.monotonic()
         if not force and now - self._last_refresh < settings.model_refresh_seconds:

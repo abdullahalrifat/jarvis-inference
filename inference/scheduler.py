@@ -62,7 +62,9 @@ class Scheduler:
         try:
             self._queue.put_nowait(object())
         except asyncio.QueueFull as exc:
-            raise InferenceError("QUEUE_FULL", "Inference queue is full", True, 429) from exc
+            raise InferenceError(
+                "QUEUE_FULL", "Inference queue is full", True, 429
+            ) from exc
         QUEUE.set(self._queue.qsize())
 
     async def _release(self) -> None:
@@ -71,7 +73,12 @@ class Scheduler:
         QUEUE.set(self._queue.qsize())
 
     def _backend_failure(self, exc: InferenceError) -> None:
-        if exc.code in {"BACKEND_ERROR", "BACKEND_UNAVAILABLE", "MODEL_TIMEOUT", "INFERENCE_ERROR"}:
+        if exc.code in {
+            "BACKEND_ERROR",
+            "BACKEND_UNAVAILABLE",
+            "MODEL_TIMEOUT",
+            "INFERENCE_ERROR",
+        }:
             self.circuit.failure()
             BACKEND_ERRORS.labels(backend=self.backend.name, code=exc.code).inc()
         self._record_circuit()
@@ -106,8 +113,11 @@ class Scheduler:
         if completion and generation:
             TOKENS_PER_SECOND.labels(model=model).observe(completion / generation)
 
-    async def _prepare(self, model: str) -> bool:
-        model_manager.validate(model)
+    async def _prepare(self, model: str, *, chat: bool = True) -> bool:
+        if chat:
+            model_manager.validate_chat(model)
+        else:
+            model_manager.validate(model)
         self._check_circuit()
         return await model_manager.ensure_available(self.backend, model)
 
@@ -123,10 +133,14 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         try:
-            warm = await self._prepare(model)
+            warm = await self._prepare(model, chat=False)
             async with self._semaphore:
                 QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
-                admit_request()
+                try:
+                    admit_request()
+                except InferenceError:
+                    RESOURCE_REJECTIONS.inc()
+                    raise
                 model_manager.activate(model, warm)
                 ACTIVE_MODEL.labels(model=model).set(1)
                 ACTIVE_REQUESTS.inc()
@@ -194,7 +208,9 @@ class Scheduler:
                     self._record_circuit()
                     model_manager.record_loaded(model)
                     usage = result.get("usage", {})
-                    TOKENS.labels(model=model, kind="prompt").inc(usage.get("prompt_tokens", 0))
+                    TOKENS.labels(model=model, kind="prompt").inc(
+                        usage.get("prompt_tokens", 0)
+                    )
                     TOKENS.labels(model=model, kind="completion").inc(
                         usage.get("completion_tokens", 0)
                     )
@@ -262,14 +278,20 @@ class Scheduler:
                                 event = {}
                             if event.get("done"):
                                 load = float(event.get("load_duration") or 0) / 1e9
-                                generation = float(event.get("eval_duration") or 0) / 1e9
+                                generation = (
+                                    float(event.get("eval_duration") or 0) / 1e9
+                                )
                                 completion = int(event.get("eval_count") or 0)
                                 if load:
                                     MODEL_LOAD.labels(model=model).observe(load)
                                 if generation:
-                                    GENERATION_DURATION.labels(model=model).observe(generation)
+                                    GENERATION_DURATION.labels(model=model).observe(
+                                        generation
+                                    )
                                 if completion:
-                                    TOKENS.labels(model=model, kind="completion").inc(completion)
+                                    TOKENS.labels(model=model, kind="completion").inc(
+                                        completion
+                                    )
                                     if generation:
                                         TOKENS_PER_SECOND.labels(model=model).observe(
                                             completion / generation
@@ -301,7 +323,9 @@ class Scheduler:
                     ACTIVE_REQUESTS.dec()
                     ACTIVE_MODEL.labels(model=model).set(0)
                     if started is not None:
-                        LATENCY.labels(model=model).observe(time.perf_counter() - started)
+                        LATENCY.labels(model=model).observe(
+                            time.perf_counter() - started
+                        )
         finally:
             await self._release()
 
@@ -319,13 +343,19 @@ class Scheduler:
         backend_ok = await self.backend.health()
         if not backend_ok:
             return {"ready": False, "reason": "backend_unhealthy"}
-        await model_manager.refresh(self.backend, force=True)
+        refreshed = await model_manager.refresh(self.backend, force=True)
+        if not refreshed:
+            return {"ready": False, "reason": "model_state_unavailable"}
         state = model_manager.status()
         configured = set(settings.inference_models)
         available = set(state["available_models"])
         missing = sorted(configured - available)
         if missing:
-            return {"ready": False, "reason": "models_missing", "missing_models": missing}
+            return {
+                "ready": False,
+                "reason": "models_missing",
+                "missing_models": missing,
+            }
         try:
             self._check_circuit()
         except InferenceError:

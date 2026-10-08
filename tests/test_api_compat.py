@@ -55,7 +55,10 @@ def test_tools_and_structured_output_are_openai_compatible(monkeypatch) -> None:
             "type": "json_schema",
             "json_schema": {
                 "name": "answer",
-                "schema": {"type": "object", "properties": {"answer": {"type": "string"}}},
+                "schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "string"}},
+                },
             },
         },
     }

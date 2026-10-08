@@ -357,3 +357,7 @@ python -m ruff check .
 python -m ruff format --check .
 python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=70
 ```
+
+## Operational validation
+
+A target-host validation surface is now available under `scripts/world_class_check.sh`, `scripts/benchmark.sh` and `scripts/soak.sh`. Production certification requires retained benchmark/soak evidence on the actual inference VM; CI alone is insufficient.

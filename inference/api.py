@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hmac
 import json
+import struct
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -18,6 +20,13 @@ from inference.scheduler import scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
+
+
+def _encode_embedding(vector: list[float], encoding_format: str) -> list[float] | str:
+    if encoding_format == "float":
+        return vector
+    packed = struct.pack(f"<{len(vector)}f", *vector)
+    return base64.b64encode(packed).decode("ascii")
 
 
 def _auth(value: str | None) -> None:
@@ -65,12 +74,22 @@ async def embeddings(
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
-            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
         ) from exc
     return {
         "object": "list",
         "data": [
-            {"object": "embedding", "embedding": vector, "index": index}
+            {
+                "object": "embedding",
+                "embedding": _encode_embedding(
+                    vector, payload.encoding_format or "float"
+                ),
+                "index": index,
+            }
             for index, vector in enumerate(vectors)
         ],
         "model": model,
@@ -113,6 +132,18 @@ async def chat(
     request_id = _request_id(request)
     body = payload.model_dump(exclude_none=True)
     body["model"] = body.get("model") or settings.default_model
+    try:
+        model_manager.validate_chat(str(body["model"]))
+    except InferenceError as exc:
+        raise HTTPException(
+            exc.status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
+            headers={"X-Request-ID": request_id},
+        ) from exc
     if payload.stream:
         return StreamingResponse(
             _stream(body, request_id),
@@ -128,7 +159,11 @@ async def chat(
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
-            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
             headers={"X-Request-ID": request_id},
         ) from exc
     result.pop("_inference", None)
@@ -142,7 +177,7 @@ async def chat(
 
 async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
     model = str(body["model"])
-    model_manager.validate(model)
+    model_manager.validate_chat(model)
     backend = scheduler.backend
     async for line in scheduler.stream(body):
         if backend.name == "ollama":
@@ -162,7 +197,9 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
                     {
                         "index": 0,
                         "delta": delta,
-                        "finish_reason": data.get("done_reason") if data.get("done") else None,
+                        "finish_reason": (
+                            data.get("done_reason") if data.get("done") else None
+                        ),
                     }
                 ],
             }
