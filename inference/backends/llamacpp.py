@@ -14,8 +14,8 @@ class LlamaCppBackend:
 
     def __init__(self) -> None:
         timeout = httpx.Timeout(
-            settings.request_timeout_seconds,
-            connect=min(10.0, settings.request_timeout_seconds),
+            settings.backend_http_timeout_seconds,
+            connect=min(10.0, settings.backend_http_timeout_seconds),
         )
         limits = httpx.Limits(
             max_connections=2,
