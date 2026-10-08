@@ -32,7 +32,7 @@ class LlamaCppBackend:
             return False
         try:
             response = await self._client.get(f"{settings.llamacpp_url}/health", timeout=3)
-            return response.status_code < 500
+            return 200 <= response.status_code < 300
         except httpx.HTTPError:
             return False
 
