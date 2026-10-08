@@ -113,6 +113,14 @@ async def chat(
     request_id = _request_id(request)
     body = payload.model_dump(exclude_none=True)
     body["model"] = body.get("model") or settings.default_model
+    try:
+        model_manager.validate_chat(str(body["model"]))
+    except InferenceError as exc:
+        raise HTTPException(
+            exc.status_code,
+            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            headers={"X-Request-ID": request_id},
+        ) from exc
     if payload.stream:
         return StreamingResponse(
             _stream(body, request_id),
@@ -142,7 +150,7 @@ async def chat(
 
 async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
     model = str(body["model"])
-    model_manager.validate(model)
+    model_manager.validate_chat(model)
     backend = scheduler.backend
     async for line in scheduler.stream(body):
         if backend.name == "ollama":
