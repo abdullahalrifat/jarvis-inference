@@ -66,7 +66,7 @@ async def embeddings(
     payload: EmbeddingRequest,
     request: Request,
     authorization: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> JSONResponse:
     _auth(_bearer(authorization))
     request_id = _request_id(request)
     model = payload.model or settings.embedding_model
@@ -244,4 +244,21 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
             yield f"data: {json.dumps(chunk)}\n\n"
         else:
             yield f"data: {line}\n\n"
-    yield "data: [DONE]\n\n"
+    yield "data: [DONE]\n\n"    return JSONResponse(
+        content={
+            "object": "list",
+            "data": [
+                {
+                    "object": "embedding",
+                    "embedding": _encode_embedding(
+                        vector, payload.encoding_format or "float"
+                    ),
+                    "index": index,
+                }
+                for index, vector in enumerate(vectors)
+            ],
+            "model": model,
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        },
+        headers={"X-Request-ID": request_id},
+    )
