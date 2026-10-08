@@ -71,7 +71,9 @@ async def embeddings(
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
     try:
-        vectors = await scheduler.embeddings(model, inputs, request_id=_request_id(request))
+        vectors = await scheduler.embeddings(
+            model, inputs, request_id=_request_id(request)
+        )
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,

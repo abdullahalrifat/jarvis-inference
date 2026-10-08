@@ -219,7 +219,9 @@ async def test_embeddings_success_records_result(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_embedding_timeout_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
+async def test_embedding_timeout_is_normalized(
+    monkeypatch, scheduler: Scheduler
+) -> None:
     class SlowEmbeddingBackend(FakeBackend):
         async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
             await asyncio.sleep(0.05)
@@ -238,7 +240,9 @@ async def test_embedding_timeout_is_normalized(monkeypatch, scheduler: Scheduler
 
 
 @pytest.mark.asyncio
-async def test_waiting_request_times_out_without_blocking(scheduler: Scheduler, monkeypatch) -> None:
+async def test_waiting_request_times_out_without_blocking(
+    scheduler: Scheduler, monkeypatch
+) -> None:
     class BlockingBackend(FakeBackend):
         async def chat(self, model: str, payload: dict) -> dict:
             await asyncio.sleep(1)
