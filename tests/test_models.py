@@ -69,3 +69,11 @@ def test_model_manager_rejects_unknown_model() -> None:
         manager.validate("not-a-model")
 
     assert exc.value.code == "UNKNOWN_MODEL"
+
+
+def test_model_manager_rejects_embedding_model_for_chat() -> None:
+    manager = ModelManager()
+    with pytest.raises(InferenceError) as exc:
+        manager.validate_chat("nomic-embed-text")
+
+    assert exc.value.code == "UNKNOWN_MODEL"
