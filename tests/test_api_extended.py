@@ -41,7 +41,10 @@ def test_inference_status() -> None:
 
 
 def test_request_id_is_preserved(monkeypatch) -> None:
-    async def fake_chat(payload):
+    captured: dict = {}
+
+    async def fake_chat(payload, request_id=None):
+        captured["request_id"] = request_id
         return {"model": payload["model"], "choices": [], "usage": {}}
 
     monkeypatch.setattr("inference.api.scheduler.chat", fake_chat)
@@ -54,11 +57,13 @@ def test_request_id_is_preserved(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "test-request-123"
     assert response.json()["id"] == "test-request-123"
+    assert captured["request_id"] == "test-request-123"
 
 
 def test_default_model_is_used(monkeypatch) -> None:
-    async def fake_chat(payload):
+    async def fake_chat(payload, request_id=None):
         assert payload["model"]
+        assert request_id
         return {"choices": [], "usage": {}}
 
     monkeypatch.setattr("inference.api.scheduler.chat", fake_chat)
@@ -82,7 +87,7 @@ def test_invalid_request_is_rejected() -> None:
 def test_backend_error_is_returned_as_openai_error(monkeypatch) -> None:
     from inference.errors import InferenceError
 
-    async def fail(payload):
+    async def fail(payload, request_id=None):
         raise InferenceError("BACKEND_ERROR", "backend unavailable", True, 503)
 
     monkeypatch.setattr("inference.api.scheduler.chat", fail)
