@@ -142,6 +142,7 @@ async def capabilities(
         },
     }
 
+
 @router.get("/v1/inference/status")
 async def inference_status(
     authorization: str | None = Header(default=None),
