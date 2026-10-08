@@ -117,10 +117,7 @@ async def capabilities(
     """Advertise the inference protocol and model capabilities."""
     _auth(_bearer(authorization))
     chat_models = list(settings.models)
-    models = [
-        {"id": model, "capabilities": ["chat", "streaming"]}
-        for model in chat_models
-    ]
+    models = [{"id": model, "capabilities": ["chat", "streaming"]} for model in chat_models]
     models.append(
         {"id": settings.embedding_model, "capabilities": ["embeddings"]}
     )
