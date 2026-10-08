@@ -158,3 +158,37 @@ async def test_cancellation_releases_queue_and_active_slot(scheduler: Scheduler)
         await task
 
     assert scheduler.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_embedding_resource_pressure_is_counted(monkeypatch, scheduler: Scheduler) -> None:
+    scheduler._ollama = FakeBackend()
+    monkeypatch.setattr(
+        "inference.scheduler.admit_request",
+        lambda: (_ for _ in ()).throw(
+            InferenceError("RESOURCE_PRESSURE", "not enough memory", True, 503)
+        ),
+    )
+
+    with pytest.raises(InferenceError) as exc:
+        await scheduler.embeddings("nomic-embed-text", ["hello"])
+
+    assert exc.value.code == "RESOURCE_PRESSURE"
+    assert scheduler.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_readiness_fails_when_model_state_refresh_fails(scheduler: Scheduler) -> None:
+    scheduler._ollama = FakeBackend()
+
+    async def broken_refresh(backend, force=False) -> bool:
+        return False
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(model_manager, "refresh", broken_refresh)
+    try:
+        result = await scheduler.readiness()
+    finally:
+        monkeypatch.undo()
+
+    assert result == {"ready": False, "reason": "model_state_unavailable"}
