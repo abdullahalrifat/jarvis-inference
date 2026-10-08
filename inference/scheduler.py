@@ -107,7 +107,7 @@ class Scheduler:
             TOKENS_PER_SECOND.labels(model=model).observe(completion / generation)
 
     async def _prepare(self, model: str) -> bool:
-        model_manager.validate(model)
+        model_manager.validate_chat(model)
         self._check_circuit()
         return await model_manager.ensure_available(self.backend, model)
 
@@ -126,7 +126,11 @@ class Scheduler:
             warm = await self._prepare(model)
             async with self._semaphore:
                 QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
-                admit_request()
+                try:
+                    admit_request()
+                except InferenceError:
+                    RESOURCE_REJECTIONS.inc()
+                    raise
                 model_manager.activate(model, warm)
                 ACTIVE_MODEL.labels(model=model).set(1)
                 ACTIVE_REQUESTS.inc()
@@ -319,7 +323,9 @@ class Scheduler:
         backend_ok = await self.backend.health()
         if not backend_ok:
             return {"ready": False, "reason": "backend_unhealthy"}
-        await model_manager.refresh(self.backend, force=True)
+        refreshed = await model_manager.refresh(self.backend, force=True)
+        if not refreshed:
+            return {"ready": False, "reason": "model_state_unavailable"}
         state = model_manager.status()
         configured = set(settings.inference_models)
         available = set(state["available_models"])
