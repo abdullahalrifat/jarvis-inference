@@ -239,7 +239,6 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
-        started = time.perf_counter()
         try:
             try:
                 warm = await self._prepare(model)
