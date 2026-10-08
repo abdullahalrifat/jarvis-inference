@@ -123,4 +123,4 @@ def test_embeddings_support_base64_encoding(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["data"][0]["embedding"] == "AACAPwAAIMC"
+    assert response.json()["data"][0]["embedding"] == "AACAPwAAIMA="
