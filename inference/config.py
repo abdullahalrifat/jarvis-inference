@@ -32,8 +32,14 @@ class Settings:
     memory_headroom_gb: float = field(
         default_factory=lambda: max(1.0, _float("MEMORY_HEADROOM_GB", 1.0))
     )
-    request_timeout_seconds: float = field(
-        default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0))
+    backend_http_timeout_seconds: float = field(
+        default_factory=lambda: max(
+            1.0,
+            _float(
+                "BACKEND_HTTP_TIMEOUT_SECONDS",
+                float(os.getenv("REQUEST_TIMEOUT_SECONDS", "600")),
+            ),
+        )
     )
     chat_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("CHAT_TIMEOUT_SECONDS", 300.0))
@@ -68,6 +74,11 @@ class Settings:
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
     ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
+
+    @property
+    def request_timeout_seconds(self) -> float:
+        """Backward-compatible alias for the backend transport timeout."""
+        return self.backend_http_timeout_seconds
 
     @property
     def models(self) -> tuple[str, ...]:
