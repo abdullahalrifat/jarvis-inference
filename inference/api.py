@@ -120,9 +120,8 @@ async def capabilities(
     models = [
         {"id": model, "capabilities": ["chat", "streaming"]}
         for model in chat_models
-    ] + [
-        {"id": settings.embedding_model, "capabilities": ["embeddings"]}
     ]
+    models.append({"id": settings.embedding_model, "capabilities": ["embeddings"]})
     return {
         "protocol": {"current": 1, "min_client": 1, "max_client": 1},
         "service": "jarvis-inference",
