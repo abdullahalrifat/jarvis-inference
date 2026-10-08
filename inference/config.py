@@ -21,23 +21,51 @@ class Settings:
     host: str = field(default_factory=lambda: os.getenv("INFERENCE_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: _int("INFERENCE_PORT", 8080))
     api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", ""))
-    max_concurrent_requests: int = field(default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1)))
+    max_concurrent_requests: int = field(
+        default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
+    )
     max_queue_size: int = field(default_factory=lambda: max(0, _int("MAX_QUEUE_SIZE", 8)))
     max_loaded_models: int = field(default_factory=lambda: max(1, _int("MAX_LOADED_MODELS", 1)))
-    memory_budget_gb: float = field(default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0)))
-    memory_headroom_gb: float = field(default_factory=lambda: max(1.0, _float("MEMORY_HEADROOM_GB", 1.0)))
-    request_timeout_seconds: float = field(default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0)))
-    chat_timeout_seconds: float = field(default_factory=lambda: max(1.0, _float("CHAT_TIMEOUT_SECONDS", 300.0)))
-    stream_timeout_seconds: float = field(default_factory=lambda: max(1.0, _float("STREAM_TIMEOUT_SECONDS", 300.0)))
-    embedding_timeout_seconds: float = field(default_factory=lambda: max(1.0, _float("EMBEDDING_TIMEOUT_SECONDS", 30.0)))
-    queue_timeout_seconds: float = field(default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 15.0)))
-    shutdown_timeout_seconds: float = field(default_factory=lambda: max(1.0, _float("SHUTDOWN_TIMEOUT_SECONDS", 30.0)))
-    model_refresh_seconds: float = field(default_factory=lambda: max(1.0, _float("MODEL_REFRESH_SECONDS", 15.0)))
-    circuit_failure_threshold: int = field(default_factory=lambda: max(1, _int("CIRCUIT_FAILURE_THRESHOLD", 3)))
-    circuit_recovery_seconds: float = field(default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0)))
+    memory_budget_gb: float = field(
+        default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0))
+    )
+    memory_headroom_gb: float = field(
+        default_factory=lambda: max(1.0, _float("MEMORY_HEADROOM_GB", 1.0))
+    )
+    request_timeout_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0))
+    )
+    chat_timeout_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("CHAT_TIMEOUT_SECONDS", 300.0))
+    )
+    stream_timeout_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("STREAM_TIMEOUT_SECONDS", 300.0))
+    )
+    embedding_timeout_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("EMBEDDING_TIMEOUT_SECONDS", 30.0))
+    )
+    queue_timeout_seconds: float = field(
+        default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 15.0))
+    )
+    shutdown_timeout_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("SHUTDOWN_TIMEOUT_SECONDS", 30.0))
+    )
+    model_refresh_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("MODEL_REFRESH_SECONDS", 15.0))
+    )
+    circuit_failure_threshold: int = field(
+        default_factory=lambda: max(1, _int("CIRCUIT_FAILURE_THRESHOLD", 3))
+    )
+    circuit_recovery_seconds: float = field(
+        default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0))
+    )
     default_model: str = field(default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b"))
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text"))
-    ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/"))
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    )
+    ollama_url: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+    )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
     ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
 

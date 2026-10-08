@@ -136,7 +136,10 @@ class Scheduler:
         except CircuitOpenError as exc:
             self._record_circuit()
             raise InferenceError(
-                "CIRCUIT_OPEN", "Inference backend is temporarily unavailable", True, 503
+                "CIRCUIT_OPEN",
+                "Inference backend is temporarily unavailable",
+                True,
+                503,
             ) from exc
 
     @staticmethod
@@ -175,7 +178,6 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
-        started = time.perf_counter()
         try:
             try:
                 warm = await self._prepare(model, chat=False)
@@ -222,20 +224,21 @@ class Scheduler:
                     raise error from exc
                 finally:
                     ACTIVE_MODEL.labels(model=model).set(0)
+            except asyncio.CancelledError:
+                if not acquired:
+                    CANCELLED_REQUESTS.labels(kind="queued").inc()
+                raise
         finally:
             if acquired:
                 self._release_slot(request_id, model)
             await self._release()
 
-    async def chat(
-        self, payload: dict[str, Any], request_id: str | None = None
-    ) -> dict[str, Any]:
+    async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
-        started = time.perf_counter()
         try:
             try:
                 warm = await self._prepare(model)
@@ -258,7 +261,9 @@ class Scheduler:
                     model_manager.record_loaded(model)
                     usage = result.get("usage", {})
                     TOKENS.labels(model=model, kind="prompt").inc(usage.get("prompt_tokens", 0))
-                    TOKENS.labels(model=model, kind="completion").inc(usage.get("completion_tokens", 0))
+                    TOKENS.labels(model=model, kind="completion").inc(
+                        usage.get("completion_tokens", 0)
+                    )
                     self._record_inference_metrics(model, result)
                     REQUESTS.labels(model=model, status="success").inc()
                     return result
@@ -340,7 +345,9 @@ class Scheduler:
                                 if completion:
                                     TOKENS.labels(model=model, kind="completion").inc(completion)
                                     if generation:
-                                        TOKENS_PER_SECOND.labels(model=model).observe(completion / generation)
+                                        TOKENS_PER_SECOND.labels(model=model).observe(
+                                            completion / generation
+                                        )
                             yield line
                     self.circuit.success()
                     self._record_circuit()
@@ -418,7 +425,11 @@ class Scheduler:
         available = set(state["available_models"])
         missing = sorted(configured - available)
         if missing:
-            return {"ready": False, "reason": "models_missing", "missing_models": missing}
+            return {
+                "ready": False,
+                "reason": "models_missing",
+                "missing_models": missing,
+            }
         try:
             self._check_circuit()
         except InferenceError:

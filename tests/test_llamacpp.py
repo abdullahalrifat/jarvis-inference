@@ -23,9 +23,7 @@ class Client:
 
 @pytest.mark.asyncio
 async def test_llamacpp_models(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "inference.backends.llamacpp.settings.llamacpp_url", "http://llama"
-    )
+    monkeypatch.setattr("inference.backends.llamacpp.settings.llamacpp_url", "http://llama")
     backend = LlamaCppBackend()
     backend._client = Client()
 
@@ -51,9 +49,7 @@ async def test_llamacpp_health_rejects_error_status(monkeypatch) -> None:
         async def get(self, url: str, timeout: float = 0) -> ErrorResponse:
             return ErrorResponse()
 
-    monkeypatch.setattr(
-        "inference.backends.llamacpp.settings.llamacpp_url", "http://llama"
-    )
+    monkeypatch.setattr("inference.backends.llamacpp.settings.llamacpp_url", "http://llama")
     backend = LlamaCppBackend()
     backend._client = ErrorClient()
 
