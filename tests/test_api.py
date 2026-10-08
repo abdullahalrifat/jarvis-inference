@@ -85,3 +85,28 @@ def test_embeddings(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["data"][1]["embedding"] == [0.3, 0.4]
+
+
+def test_embedding_model_is_rejected_for_chat() -> None:
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "nomic-embed-text",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
+
+
+def test_invalid_stream_model_is_rejected_before_streaming() -> None:
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "not-a-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
