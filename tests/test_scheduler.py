@@ -26,6 +26,9 @@ class FakeBackend:
             "usage": {"prompt_tokens": 2, "completion_tokens": 3},
         }
 
+    async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2] for _ in inputs]
+
     async def stream(self, model: str, payload: dict):
         yield '{"message":{"role":"assistant","content":"ok"},"done":true}'
 
@@ -203,3 +206,58 @@ async def test_readiness_fails_when_model_state_refresh_fails(
         monkeypatch.undo()
 
     assert result == {"ready": False, "reason": "model_state_unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_embeddings_success_records_result(scheduler: Scheduler) -> None:
+    scheduler._ollama = FakeBackend()
+    result = await scheduler.embeddings("nomic-embed-text", ["hello", "world"])
+
+    assert result == [[0.1, 0.2], [0.1, 0.2]]
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_embedding_timeout_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
+    class SlowEmbeddingBackend(FakeBackend):
+        async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+            await asyncio.sleep(0.05)
+            return await super().embeddings(model, inputs)
+
+    scheduler._ollama = SlowEmbeddingBackend()
+    monkeypatch.setattr("inference.scheduler.settings.embedding_timeout_seconds", 0.001)
+
+    with pytest.raises(InferenceError) as exc:
+        await scheduler.embeddings("nomic-embed-text", ["hello"])
+
+    assert exc.value.code == "EMBEDDING_TIMEOUT"
+    assert exc.value.status_code == 504
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_waiting_request_times_out_without_blocking(scheduler: Scheduler, monkeypatch) -> None:
+    class BlockingBackend(FakeBackend):
+        async def chat(self, model: str, payload: dict) -> dict:
+            await asyncio.sleep(1)
+            return await super().chat(model, payload)
+
+    scheduler._ollama = BlockingBackend()
+    monkeypatch.setattr("inference.scheduler.settings.queue_timeout_seconds", 0.01)
+
+    first = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
+    await asyncio.sleep(0.01)
+    second = asyncio.create_task(scheduler.embeddings("nomic-embed-text", ["hello"]))
+
+    with pytest.raises(InferenceError) as exc:
+        await second
+
+    assert exc.value.code == "QUEUE_TIMEOUT"
+    assert scheduler.status()["queue_depth"] == 1
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
