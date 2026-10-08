@@ -26,7 +26,10 @@ def test_models() -> None:
 
 
 def test_success_preserves_request_id(monkeypatch) -> None:
-    async def fake_chat(payload: dict) -> dict:
+    captured: dict = {}
+
+    async def fake_chat(payload: dict, request_id: str | None = None) -> dict:
+        captured["request_id"] = request_id
         return {
             "model": payload["model"],
             "choices": [],
@@ -43,6 +46,7 @@ def test_success_preserves_request_id(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "req-test-123"
     assert response.json()["id"] == "req-test-123"
+    assert captured["request_id"] == "req-test-123"
 
 
 def test_metrics_requires_auth_when_configured(monkeypatch) -> None:
@@ -72,7 +76,12 @@ def test_readiness_returns_503_when_backend_not_ready(monkeypatch) -> None:
 
 
 def test_embeddings(monkeypatch) -> None:
-    async def fake_embeddings(model: str, inputs: list[str]) -> list[list[float]]:
+    captured: dict = {}
+
+    async def fake_embeddings(
+        model: str, inputs: list[str], request_id: str | None = None
+    ) -> list[list[float]]:
+        captured["request_id"] = request_id
         assert model == "nomic-embed-text"
         assert inputs == ["hello", "world"]
         return [[0.1, 0.2], [0.3, 0.4]]
@@ -80,11 +89,13 @@ def test_embeddings(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "embeddings", fake_embeddings)
     response = TestClient(app).post(
         "/v1/embeddings",
+        headers={"X-Request-ID": "embed-test-123"},
         json={"model": "nomic-embed-text", "input": ["hello", "world"]},
     )
 
     assert response.status_code == 200
     assert response.json()["data"][1]["embedding"] == [0.3, 0.4]
+    assert captured["request_id"] == "embed-test-123"
 
 
 def test_embedding_model_is_rejected_for_chat() -> None:
@@ -113,7 +124,9 @@ def test_invalid_stream_model_is_rejected_before_streaming() -> None:
 
 
 def test_embeddings_support_base64_encoding(monkeypatch) -> None:
-    async def fake_embeddings(model: str, inputs: list[str]) -> list[list[float]]:
+    async def fake_embeddings(
+        model: str, inputs: list[str], request_id: str | None = None
+    ) -> list[list[float]]:
         return [[1.0, -2.5]]
 
     monkeypatch.setattr(scheduler, "embeddings", fake_embeddings)
