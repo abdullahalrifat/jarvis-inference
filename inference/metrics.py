@@ -52,6 +52,12 @@ HOST_MEMORY_AVAILABLE = Gauge(
 CONTAINER_MEMORY_AVAILABLE = Gauge(
     "inference_container_memory_available_gib", "Available inference-container memory in GiB."
 )
+ADMISSION_MEMORY_AVAILABLE = Gauge(
+    "inference_admission_memory_available_gib", "Memory available to model admission in GiB."
+)
+MEMORY_BUDGET = Gauge(
+    "inference_memory_budget_gib", "Configured model admission memory budget in GiB."
+)
 CPU_PERCENT = Gauge("inference_host_cpu_percent", "Host CPU utilization percentage.")
 
 
@@ -59,6 +65,8 @@ def render() -> bytes:
     resources = resource_status()
     HOST_MEMORY_AVAILABLE.set(float(resources["host_memory_available_gb"]))
     CONTAINER_MEMORY_AVAILABLE.set(float(resources["container_memory_available_gb"]))
+    ADMISSION_MEMORY_AVAILABLE.set(float(resources["admission_memory_available_gb"]))
+    MEMORY_BUDGET.set(float(resources["memory_budget_gb"]))
     CPU_PERCENT.set(float(resources["cpu_percent"]))
     state = model_manager.status()
     warm = set(state["warm_models"])
