@@ -113,6 +113,7 @@ Verify:
 docker compose ps
 curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/ready
+curl -sS -H "Authorization: Bearer $INFERENCE_API_KEY" http://127.0.0.1:8080/v1/capabilities
 ```
 
 From a remote Jarvis/AI Stack VM:
