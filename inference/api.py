@@ -68,10 +68,11 @@ async def embeddings(
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
     _auth(_bearer(authorization))
+    request_id = _request_id(request)
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
     try:
-        vectors = await scheduler.embeddings(model, inputs, request_id=_request_id(request))
+        vectors = await scheduler.embeddings(model, inputs, request_id=request_id)
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
@@ -80,6 +81,7 @@ async def embeddings(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
+            headers={"X-Request-ID": request_id},
         ) from exc
     return {
         "object": "list",
