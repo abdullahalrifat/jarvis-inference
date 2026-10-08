@@ -55,7 +55,10 @@ def test_capabilities_advertise_protocol_and_models() -> None:
     body = response.json()
     assert body["protocol"]["current"] == 1
     assert "chat" in body["features"]
-    assert {"id": "nomic-embed-text", "capabilities": ["embeddings"]} in body["models"]
+    assert {
+        "id": "nomic-embed-text",
+        "capabilities": ["embeddings"],
+    } in body["models"]
     assert body["limits"]["queue_timeout_seconds"] > 0
 
 

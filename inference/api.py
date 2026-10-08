@@ -111,14 +111,22 @@ async def models(authorization: str | None = Header(default=None)) -> dict[str, 
 
 
 @router.get("/v1/capabilities", response_model=dict)
-async def capabilities(authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def capabilities(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     """Advertise the inference protocol and model capabilities."""
     _auth(_bearer(authorization))
     chat_models = list(settings.models)
     return {
         "protocol": {"current": 1, "min_client": 1, "max_client": 1},
         "service": "jarvis-inference",
-        "features": ["chat", "streaming", "embeddings", "model_catalog", "request_ids"],
+        "features": [
+            "chat",
+            "streaming",
+            "embeddings",
+            "model_catalog",
+            "request_ids",
+        ],
         "models": [
             {"id": model, "capabilities": ["chat", "streaming"]}
             for model in chat_models
