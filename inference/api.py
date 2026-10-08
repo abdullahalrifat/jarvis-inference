@@ -244,7 +244,8 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
             yield f"data: {json.dumps(chunk)}\n\n"
         else:
             yield f"data: {line}\n\n"
-    yield "data: [DONE]\n\n"    return JSONResponse(
+    yield "data: [DONE]\n\n"
+    return JSONResponse(
         content={
             "object": "list",
             "data": [
