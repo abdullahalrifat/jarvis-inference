@@ -13,7 +13,9 @@ def _float(name: str, default: float) -> float:
 
 
 def _csv(name: str, default: str) -> tuple[str, ...]:
-    return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
+    return tuple(
+        item.strip() for item in os.getenv(name, default).split(",") if item.strip()
+    )
 
 
 @dataclass
@@ -24,8 +26,12 @@ class Settings:
     max_concurrent_requests: int = field(
         default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
     )
-    max_queue_size: int = field(default_factory=lambda: max(0, _int("MAX_QUEUE_SIZE", 8)))
-    max_loaded_models: int = field(default_factory=lambda: max(1, _int("MAX_LOADED_MODELS", 1)))
+    max_queue_size: int = field(
+        default_factory=lambda: max(0, _int("MAX_QUEUE_SIZE", 8))
+    )
+    max_loaded_models: int = field(
+        default_factory=lambda: max(1, _int("MAX_LOADED_MODELS", 1))
+    )
     memory_budget_gb: float = field(
         default_factory=lambda: max(0.5, _float("MEMORY_BUDGET_GB", 10.0))
     )
@@ -47,15 +53,23 @@ class Settings:
     circuit_recovery_seconds: float = field(
         default_factory=lambda: max(1.0, _float("CIRCUIT_RECOVERY_SECONDS", 15.0))
     )
-    default_model: str = field(default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b"))
+    default_model: str = field(
+        default_factory=lambda: os.getenv("DEFAULT_MODEL", "qwen3:1.7b")
+    )
     embedding_model: str = field(
         default_factory=lambda: os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     )
     ollama_url: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+        default_factory=lambda: os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip(
+            "/"
+        )
     )
-    llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
-    ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
+    llamacpp_url: str = field(
+        default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/")
+    )
+    ollama_keep_alive: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+    )
 
     @property
     def models(self) -> tuple[str, ...]:

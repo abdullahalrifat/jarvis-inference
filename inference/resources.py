@@ -80,7 +80,9 @@ def status() -> dict[str, float | int | None]:
         "memory_headroom_gb": round(settings.memory_headroom_gb, 2),
         "admission_memory_available_gb": round(memory_available_gb(), 2),
         "container_memory_limit_gb": round(limit / 1024**3, 2) if limit else None,
-        "container_memory_current_gb": round(current / 1024**3, 2) if current is not None else None,
+        "container_memory_current_gb": (
+            round(current / 1024**3, 2) if current is not None else None
+        ),
         "container_memory_available_gb": round(container_memory_available_gb(), 2),
         "cpu_percent": psutil.cpu_percent(interval=None),
         "cpu_count": psutil.cpu_count(logical=True) or 1,

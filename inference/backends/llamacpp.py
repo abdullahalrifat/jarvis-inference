@@ -22,7 +22,9 @@ class LlamaCppBackend:
             max_keepalive_connections=1,
             keepalive_expiry=30.0,
         )
-        self._client = httpx.AsyncClient(timeout=timeout, limits=limits, trust_env=False)
+        self._client = httpx.AsyncClient(
+            timeout=timeout, limits=limits, trust_env=False
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -31,7 +33,9 @@ class LlamaCppBackend:
         if not settings.llamacpp_url:
             return False
         try:
-            response = await self._client.get(f"{settings.llamacpp_url}/health", timeout=3)
+            response = await self._client.get(
+                f"{settings.llamacpp_url}/health", timeout=3
+            )
             return 200 <= response.status_code < 300
         except httpx.HTTPError:
             return False
@@ -39,7 +43,9 @@ class LlamaCppBackend:
     async def available_models(self) -> list[str]:
         if not settings.llamacpp_url:
             return []
-        response = await self._client.get(f"{settings.llamacpp_url}/v1/models", timeout=3)
+        response = await self._client.get(
+            f"{settings.llamacpp_url}/v1/models", timeout=3
+        )
         response.raise_for_status()
         return [str(item["id"]) for item in response.json().get("data", [])]
 
@@ -58,7 +64,9 @@ class LlamaCppBackend:
             )
             response.raise_for_status()
             data = response.json()
-            return [list(map(float, item["embedding"])) for item in data.get("data", [])]
+            return [
+                list(map(float, item["embedding"])) for item in data.get("data", [])
+            ]
         except httpx.TimeoutException as exc:
             raise InferenceError(
                 "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
@@ -87,7 +95,9 @@ class LlamaCppBackend:
             )
             response.raise_for_status()
         except httpx.TimeoutException as exc:
-            raise InferenceError("MODEL_TIMEOUT", "Inference request timed out", True, 504) from exc
+            raise InferenceError(
+                "MODEL_TIMEOUT", "Inference request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(
@@ -117,7 +127,9 @@ class LlamaCppBackend:
                     if line.startswith("data: "):
                         yield line[6:]
         except httpx.TimeoutException as exc:
-            raise InferenceError("MODEL_TIMEOUT", "Inference request timed out", True, 504) from exc
+            raise InferenceError(
+                "MODEL_TIMEOUT", "Inference request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(

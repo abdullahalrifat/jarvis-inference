@@ -119,7 +119,11 @@ def test_embeddings_support_base64_encoding(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "embeddings", fake_embeddings)
     response = TestClient(app).post(
         "/v1/embeddings",
-        json={"model": "nomic-embed-text", "input": "hello", "encoding_format": "base64"},
+        json={
+            "model": "nomic-embed-text",
+            "input": "hello",
+            "encoding_format": "base64",
+        },
     )
 
     assert response.status_code == 200

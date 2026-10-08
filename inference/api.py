@@ -74,12 +74,22 @@ async def embeddings(
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
-            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
         ) from exc
     return {
         "object": "list",
         "data": [
-            {"object": "embedding", "embedding": _encode_embedding(vector, payload.encoding_format or "float"), "index": index}
+            {
+                "object": "embedding",
+                "embedding": _encode_embedding(
+                    vector, payload.encoding_format or "float"
+                ),
+                "index": index,
+            }
             for index, vector in enumerate(vectors)
         ],
         "model": model,
@@ -127,7 +137,11 @@ async def chat(
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
-            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
             headers={"X-Request-ID": request_id},
         ) from exc
     if payload.stream:
@@ -145,7 +159,11 @@ async def chat(
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
-            detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+            },
             headers={"X-Request-ID": request_id},
         ) from exc
     result.pop("_inference", None)
@@ -179,7 +197,9 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
                     {
                         "index": 0,
                         "delta": delta,
-                        "finish_reason": data.get("done_reason") if data.get("done") else None,
+                        "finish_reason": (
+                            data.get("done_reason") if data.get("done") else None
+                        ),
                     }
                 ],
             }
