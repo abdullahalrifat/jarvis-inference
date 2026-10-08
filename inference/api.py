@@ -86,17 +86,15 @@ async def embeddings(
     return JSONResponse(
         content={
             "object": "list",
-            "data": [
-                {
-                    "object": "embedding",
-                    "embedding": _encode_embedding(
-                        vector, payload.encoding_format or "float"
-                    ),
-                    "index": index,
-                }
-                for index, vector in enumerate(vectors)
-            ],
-            "model": model,
+        "data": [
+            {
+                "object": "embedding",
+                "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
+                "index": index,
+            }
+            for index, vector in enumerate(vectors)
+        ],
+        "model": model,
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         },
         headers={"X-Request-ID": request_id},
@@ -118,11 +116,7 @@ async def capabilities(authorization: str | None = Header(default=None)) -> dict
     _auth(_bearer(authorization))
     chat_models = list(settings.models)
     return {
-        "protocol": {
-            "current": 1,
-            "min_client": 1,
-            "max_client": 1,
-        },
+        "protocol": {"current": 1, "min_client": 1, "max_client": 1},
         "service": "jarvis-inference",
         "features": ["chat", "streaming", "embeddings", "model_catalog", "request_ids"],
         "models": [
@@ -139,7 +133,6 @@ async def capabilities(authorization: str | None = Header(default=None)) -> dict
             "embedding_timeout_seconds": settings.embedding_timeout_seconds,
         },
     }
-
 
 @router.get("/v1/inference/status")
 async def inference_status(
@@ -247,21 +240,3 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
         else:
             yield f"data: {line}\n\n"
     yield "data: [DONE]\n\n"
-    return JSONResponse(
-        content={
-            "object": "list",
-            "data": [
-                {
-                    "object": "embedding",
-                    "embedding": _encode_embedding(
-                        vector, payload.encoding_format or "float"
-                    ),
-                    "index": index,
-                }
-                for index, vector in enumerate(vectors)
-            ],
-            "model": model,
-            "usage": {"prompt_tokens": 0, "total_tokens": 0},
-        },
-        headers={"X-Request-ID": request_id},
-    )
