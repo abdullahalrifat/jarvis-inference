@@ -5,8 +5,12 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from inference.models import model_manager
 from inference.resources import status as resource_status
 
-REQUESTS = Counter("inference_requests_total", "Inference requests.", ["model", "status"])
-LATENCY = Histogram("inference_request_duration_seconds", "Inference request duration.", ["model"])
+REQUESTS = Counter(
+    "inference_requests_total", "Inference requests.", ["model", "status"]
+)
+LATENCY = Histogram(
+    "inference_request_duration_seconds", "Inference request duration.", ["model"]
+)
 QUEUE_WAIT = Histogram(
     "inference_queue_wait_seconds",
     "Time spent waiting for an inference slot.",
@@ -26,9 +30,13 @@ TOKENS = Counter("inference_tokens_total", "Inference tokens.", ["model", "kind"
 TOKENS_PER_SECOND = Histogram(
     "inference_tokens_per_second", "Observed output token generation rate.", ["model"]
 )
-MODEL_LOAD = Histogram("inference_model_load_seconds", "Observed model load duration.", ["model"])
+MODEL_LOAD = Histogram(
+    "inference_model_load_seconds", "Observed model load duration.", ["model"]
+)
 QUEUE = Gauge("inference_queue_depth", "Current queued requests.")
-ACTIVE_REQUESTS = Gauge("inference_active_requests", "Currently executing inference requests.")
+ACTIVE_REQUESTS = Gauge(
+    "inference_active_requests", "Currently executing inference requests."
+)
 ACTIVE_REQUEST_AGE = Gauge(
     "inference_active_request_age_seconds",
     "Age of the oldest active inference request.",
@@ -55,8 +63,12 @@ CIRCUIT_STATE = Gauge(
     "Whether the backend circuit is open (1) or closed.",
     ["backend"],
 )
-ACTIVE_MODEL = Gauge("inference_active_model", "Whether the model is active.", ["model"])
-MODEL_WARM = Gauge("inference_model_warm", "Whether the model is currently warm.", ["model"])
+ACTIVE_MODEL = Gauge(
+    "inference_active_model", "Whether the model is active.", ["model"]
+)
+MODEL_WARM = Gauge(
+    "inference_model_warm", "Whether the model is currently warm.", ["model"]
+)
 HOST_MEMORY_AVAILABLE = Gauge(
     "inference_host_memory_available_gib", "Available host memory in GiB."
 )

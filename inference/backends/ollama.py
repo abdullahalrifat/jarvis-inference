@@ -23,14 +23,18 @@ class OllamaBackend:
             max_keepalive_connections=1,
             keepalive_expiry=30.0,
         )
-        self._client = httpx.AsyncClient(timeout=timeout, limits=limits, trust_env=False)
+        self._client = httpx.AsyncClient(
+            timeout=timeout, limits=limits, trust_env=False
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
 
     async def health(self) -> bool:
         try:
-            response = await self._client.get(f"{settings.ollama_url}/api/tags", timeout=3)
+            response = await self._client.get(
+                f"{settings.ollama_url}/api/tags", timeout=3
+            )
             response.raise_for_status()
             return True
         except httpx.HTTPError:
@@ -69,7 +73,9 @@ class OllamaBackend:
                 data = response.json()
                 embeddings = data.get("embeddings") or []
                 if not embeddings:
-                    raise InferenceError("BACKEND_ERROR", "Ollama returned no embedding", True, 503)
+                    raise InferenceError(
+                        "BACKEND_ERROR", "Ollama returned no embedding", True, 503
+                    )
                 vectors.append([float(value) for value in embeddings[0]])
             return vectors
         except httpx.TimeoutException as exc:
@@ -97,7 +103,9 @@ class OllamaBackend:
             )
             response.raise_for_status()
         except httpx.TimeoutException as exc:
-            raise InferenceError("MODEL_TIMEOUT", "Inference request timed out", True, 504) from exc
+            raise InferenceError(
+                "MODEL_TIMEOUT", "Inference request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(
@@ -122,7 +130,9 @@ class OllamaBackend:
                     if line:
                         yield line
         except httpx.TimeoutException as exc:
-            raise InferenceError("MODEL_TIMEOUT", "Inference request timed out", True, 504) from exc
+            raise InferenceError(
+                "MODEL_TIMEOUT", "Inference request timed out", True, 504
+            ) from exc
         except httpx.HTTPStatusError as exc:
             retryable = exc.response.status_code >= 500
             raise InferenceError(
