@@ -101,7 +101,7 @@ async def test_backend_exception_is_normalized(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_timeout_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
     scheduler._ollama = SlowBackend()
-    monkeypatch.setattr("inference.scheduler.settings.request_timeout_seconds", 0.001)
+    monkeypatch.setattr("inference.scheduler.settings.chat_timeout_seconds", 0.001)
 
     with pytest.raises(InferenceError) as exc:
         await scheduler.chat({"model": "qwen3:1.7b", "messages": []})
