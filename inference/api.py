@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hmac
 import json
+import struct
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -18,6 +20,13 @@ from inference.scheduler import scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
+
+
+def _encode_embedding(vector: list[float], encoding_format: str) -> list[float] | str:
+    if encoding_format == "float":
+        return vector
+    packed = struct.pack(f"<{len(vector)}f", *vector)
+    return base64.b64encode(packed).decode("ascii")
 
 
 def _auth(value: str | None) -> None:
@@ -70,7 +79,7 @@ async def embeddings(
     return {
         "object": "list",
         "data": [
-            {"object": "embedding", "embedding": vector, "index": index}
+            {"object": "embedding", "embedding": _encode_embedding(vector, payload.encoding_format or "float"), "index": index}
             for index, vector in enumerate(vectors)
         ],
         "model": model,
