@@ -15,25 +15,48 @@ def _read_int(path: Path) -> int | None:
         return None
 
 
-def memory_limit_bytes() -> int | None:
-    for path in (
-        Path("/sys/fs/cgroup/memory.max"),
-        Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+def _cgroup_stats() -> tuple[int | None, int | None]:
+    """Return the active cgroup memory limit and current usage."""
+    for limit_path, current_path in (
+        (Path("/sys/fs/cgroup/memory.max"), Path("/sys/fs/cgroup/memory.current")),
+        (
+            Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+            Path("/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+        ),
     ):
-        value = _read_int(path)
-        if value is not None and value < 1 << 60:
-            return value
-    return None
+        limit = _read_int(limit_path)
+        if limit is not None and limit < 1 << 60:
+            return limit, _read_int(current_path)
+    return None, None
+
+
+def memory_limit_bytes() -> int | None:
+    return _cgroup_stats()[0]
+
+
+def memory_current_bytes() -> int | None:
+    return _cgroup_stats()[1]
+
+
+def container_memory_available_gb() -> float:
+    """Return memory left inside this API container, for diagnostics only."""
+    limit, current = _cgroup_stats()
+    if limit is None:
+        return psutil.virtual_memory().available / 1024**3
+    if current is None:
+        return 0.0
+    return max(0.0, (limit - current) / 1024**3)
 
 
 def memory_available_gb() -> float:
-    limit = memory_limit_bytes()
-    if limit is None:
-        return psutil.virtual_memory().available / 1024**3
-    current = _read_int(Path("/sys/fs/cgroup/memory.current"))
-    if current is None:
-        return limit / 1024**3
-    return max(0.0, (limit - current) / 1024**3)
+    """Return memory available to the model runtime admission policy.
+
+    Model execution happens in the sibling Ollama container, so the gateway
+    cgroup is not the model's capacity. Use host availability bounded by the
+    explicitly configured gateway admission budget instead.
+    """
+    host_available = psutil.virtual_memory().available / 1024**3
+    return max(0.0, min(host_available, settings.memory_budget_gb))
 
 
 def admit_request() -> None:
@@ -49,12 +72,16 @@ def admit_request() -> None:
 
 def status() -> dict[str, float | int | None]:
     vm = psutil.virtual_memory()
-    limit = memory_limit_bytes()
+    limit, current = _cgroup_stats()
     return {
         "host_memory_total_gb": round(vm.total / 1024**3, 2),
         "host_memory_available_gb": round(vm.available / 1024**3, 2),
+        "memory_budget_gb": round(settings.memory_budget_gb, 2),
+        "memory_headroom_gb": round(settings.memory_headroom_gb, 2),
+        "admission_memory_available_gb": round(memory_available_gb(), 2),
         "container_memory_limit_gb": round(limit / 1024**3, 2) if limit else None,
-        "container_memory_available_gb": round(memory_available_gb(), 2),
+        "container_memory_current_gb": round(current / 1024**3, 2) if current else None,
+        "container_memory_available_gb": round(container_memory_available_gb(), 2),
         "cpu_percent": psutil.cpu_percent(interval=None),
         "cpu_count": psutil.cpu_count(logical=True) or 1,
     }
