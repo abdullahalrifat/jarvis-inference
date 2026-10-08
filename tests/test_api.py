@@ -110,3 +110,17 @@ def test_invalid_stream_model_is_rejected_before_streaming() -> None:
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
+
+
+def test_embeddings_support_base64_encoding(monkeypatch) -> None:
+    async def fake_embeddings(model: str, inputs: list[str]) -> list[list[float]]:
+        return [[1.0, -2.5]]
+
+    monkeypatch.setattr(scheduler, "embeddings", fake_embeddings)
+    response = TestClient(app).post(
+        "/v1/embeddings",
+        json={"model": "nomic-embed-text", "input": "hello", "encoding_format": "base64"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["embedding"] == "AACAPwAAIMC"
