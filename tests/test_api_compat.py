@@ -7,8 +7,9 @@ from inference.scheduler import scheduler
 def test_tools_and_structured_output_are_openai_compatible(monkeypatch) -> None:
     captured: dict = {}
 
-    async def fake_chat(payload: dict) -> dict:
+    async def fake_chat(payload: dict, request_id: str | None = None) -> dict:
         captured.update(payload)
+        captured["request_id"] = request_id
         return {
             "model": payload["model"],
             "choices": [
@@ -67,5 +68,6 @@ def test_tools_and_structured_output_are_openai_compatible(monkeypatch) -> None:
     assert response.status_code == 200
     assert captured["tools"][0]["function"]["name"] == "get_weather"
     assert captured["response_format"]["type"] == "json_schema"
+    assert captured["request_id"]
     assert "_inference" not in response.json()
     assert response.json()["choices"][0]["message"]["tool_calls"]
