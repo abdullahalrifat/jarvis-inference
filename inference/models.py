@@ -40,7 +40,7 @@ class ModelManager:
         if model not in settings.models:
             raise InferenceError(
                 "UNKNOWN_MODEL",
-                f"Unknown chat model '{model}'. Use one of: {', '.join(settings.models)}",
+                f"Unknown model '{model}'. Use one of: {', '.join(settings.models)}",
                 False,
                 400,
             )
