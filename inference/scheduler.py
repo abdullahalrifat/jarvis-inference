@@ -71,9 +71,7 @@ class Scheduler:
         try:
             self._queue.put_nowait(object())
         except asyncio.QueueFull as exc:
-            raise InferenceError(
-                "QUEUE_FULL", "Inference queue is full", True, 429
-            ) from exc
+            raise InferenceError("QUEUE_FULL", "Inference queue is full", True, 429) from exc
         QUEUE.set(self._queue.qsize())
 
     async def _release(self) -> None:
@@ -236,9 +234,7 @@ class Scheduler:
                 self._release_slot(request_id, model)
             await self._release()
 
-    async def chat(
-        self, payload: dict[str, Any], request_id: str | None = None
-    ) -> dict[str, Any]:
+    async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         request_id = request_id or self._new_request_id()
         self._enqueue()
@@ -266,9 +262,7 @@ class Scheduler:
                     self._record_circuit()
                     model_manager.record_loaded(model)
                     usage = result.get("usage", {})
-                    TOKENS.labels(model=model, kind="prompt").inc(
-                        usage.get("prompt_tokens", 0)
-                    )
+                    TOKENS.labels(model=model, kind="prompt").inc(usage.get("prompt_tokens", 0))
                     TOKENS.labels(model=model, kind="completion").inc(
                         usage.get("completion_tokens", 0)
                     )
@@ -344,20 +338,14 @@ class Scheduler:
                                 event = {}
                             if event.get("done"):
                                 load = float(event.get("load_duration") or 0) / 1e9
-                                generation = (
-                                    float(event.get("eval_duration") or 0) / 1e9
-                                )
+                                generation = float(event.get("eval_duration") or 0) / 1e9
                                 completion = int(event.get("eval_count") or 0)
                                 if load:
                                     MODEL_LOAD.labels(model=model).observe(load)
                                 if generation:
-                                    GENERATION_DURATION.labels(model=model).observe(
-                                        generation
-                                    )
+                                    GENERATION_DURATION.labels(model=model).observe(generation)
                                 if completion:
-                                    TOKENS.labels(model=model, kind="completion").inc(
-                                        completion
-                                    )
+                                    TOKENS.labels(model=model, kind="completion").inc(completion)
                                     if generation:
                                         TOKENS_PER_SECOND.labels(model=model).observe(
                                             completion / generation
@@ -392,9 +380,7 @@ class Scheduler:
                 finally:
                     ACTIVE_MODEL.labels(model=model).set(0)
                     if started is not None:
-                        LATENCY.labels(model=model).observe(
-                            time.perf_counter() - started
-                        )
+                        LATENCY.labels(model=model).observe(time.perf_counter() - started)
             except asyncio.CancelledError:
                 if not acquired:
                     CANCELLED_REQUESTS.labels(kind="queued").inc()
