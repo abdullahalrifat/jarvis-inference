@@ -117,6 +117,10 @@ async def capabilities(
     """Advertise the inference protocol and model capabilities."""
     _auth(_bearer(authorization))
     chat_models = list(settings.models)
+    models = [
+        {"id": model, "capabilities": ["chat", "streaming"]}
+        for model in chat_models
+    ] + [{"id": settings.embedding_model, "capabilities": ["embeddings"]}]
     return {
         "protocol": {"current": 1, "min_client": 1, "max_client": 1},
         "service": "jarvis-inference",
@@ -127,11 +131,7 @@ async def capabilities(
             "model_catalog",
             "request_ids",
         ],
-        "models": [
-            {"id": model, "capabilities": ["chat", "streaming"]}
-            for model in chat_models
-        ]
-        + [{"id": settings.embedding_model, "capabilities": ["embeddings"]}],
+        "models": models,
         "limits": {
             "max_concurrent_requests": settings.max_concurrent_requests,
             "max_queue_size": settings.max_queue_size,
