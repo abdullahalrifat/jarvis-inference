@@ -222,6 +222,10 @@ class Scheduler:
                     raise error from exc
                 finally:
                     ACTIVE_MODEL.labels(model=model).set(0)
+            except asyncio.CancelledError:
+                if not acquired:
+                    CANCELLED_REQUESTS.labels(kind="queued").inc()
+                raise
         finally:
             if acquired:
                 self._release_slot(request_id, model)
