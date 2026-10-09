@@ -29,17 +29,22 @@ Jarvis CLI (local agent)           AI Stack (optional remote control plane)
 
 The dedicated inference VM owns model execution. Jarvis and AI Stack are independent sibling consumers of the gateway; neither consumer runs Ollama or LiteLLM. Jarvis local execution must remain usable when AI Stack is stopped. The gateway owns the model allowlist, bounded queue, concurrency, backend timeouts and resource limits.
 
-## Production profile
+## Production and constrained-host profiles
 
-Recommended CPU-only VM:
+Recommended CPU-only VM for comfortable headroom:
 
 - 4 vCPU
 - 10-12 GiB RAM
-- Ollama: 2.75 CPU / 9 GiB RAM
-- Gateway: 0.50 CPU / 512 MiB RAM
+- Ollama: up to 2.75 CPU / 9 GiB RAM
+- Gateway: up to 0.50 CPU / 512 MiB RAM
+
+Constrained 2-vCPU / 10-GiB hosts (such as a small homelab VM) should retain the lower defaults in `.env.example`: Ollama 1.5 CPU / 8 GiB and gateway 0.4 CPU / 1 GiB. Do not copy the larger production CPU limits onto a 2-vCPU VM without benchmarking and host-headroom checks.
+
+Both profiles preserve:
+
 - One active generation
 - One loaded model
-- Queue size 8
+- Queue size 8 waiting requests (active generation is separate)
 - Context length 8192
 - Ollama keep-alive 30 minutes
 
