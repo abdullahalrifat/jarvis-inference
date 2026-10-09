@@ -74,7 +74,14 @@ class Scheduler:
             raise InferenceError("QUEUE_FULL", "Inference queue is full", True, 429) from exc
         QUEUE.set(self._queue.qsize())
 
+    def _dequeue(self) -> None:
+        """Remove one admitted request from the waiting queue without yielding."""
+        self._queue.get_nowait()
+        self._queue.task_done()
+        QUEUE.set(self._queue.qsize())
+
     async def _release(self) -> None:
+        """Remove a request that exits before acquiring an inference slot."""
         await self._queue.get()
         self._queue.task_done()
         QUEUE.set(self._queue.qsize())
@@ -178,11 +185,14 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
+        queued = True
         try:
             try:
                 await self._acquire_slot(model, enqueued, request_id)
-                warm = await self._prepare(model, chat=False)
                 acquired = True
+                self._dequeue()
+                queued = False
+                warm = await self._prepare(model, chat=False)
                 try:
                     admit_request()
                 except InferenceError:
@@ -231,7 +241,8 @@ class Scheduler:
         finally:
             if acquired:
                 self._release_slot(request_id, model)
-            await self._release()
+            if queued:
+                await self._release()
 
     async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
@@ -243,8 +254,10 @@ class Scheduler:
         try:
             try:
                 await self._acquire_slot(model, enqueued, request_id)
-                warm = await self._prepare(model)
                 acquired = True
+                self._dequeue()
+                queued = False
+                warm = await self._prepare(model)
                 try:
                     admit_request()
                 except InferenceError:
@@ -299,7 +312,8 @@ class Scheduler:
         finally:
             if acquired:
                 self._release_slot(request_id, model)
-            await self._release()
+            if queued:
+                await self._release()
 
     async def stream(
         self, payload: dict[str, Any], request_id: str | None = None
@@ -315,8 +329,10 @@ class Scheduler:
         try:
             try:
                 await self._acquire_slot(model, enqueued, request_id)
-                warm = await self._prepare(model)
                 acquired = True
+                self._dequeue()
+                queued = False
+                warm = await self._prepare(model)
                 try:
                     admit_request()
                 except InferenceError:
@@ -388,7 +404,8 @@ class Scheduler:
         finally:
             if acquired:
                 self._release_slot(request_id, model)
-            await self._release()
+            if queued:
+                await self._release()
 
     def status(self) -> dict[str, Any]:
         active = []
