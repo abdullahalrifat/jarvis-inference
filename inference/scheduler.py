@@ -438,7 +438,7 @@ class Scheduler:
         backend_ok = await self.backend.health()
         if not backend_ok:
             return {"ready": False, "reason": "backend_unhealthy"}
-        refreshed = await model_manager.refresh(self.backend, force=True)
+        refreshed = await model_manager.refresh(self.backend)
         if not refreshed:
             return {"ready": False, "reason": "model_state_unavailable"}
         state = model_manager.status()
