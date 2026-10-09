@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from inference.errors import InferenceError
 from inference.main import app
-from inference.scheduler import scheduler
+from inference.scheduler import StreamLease, scheduler
 
 
 def test_openapi_reports_package_version() -> None:
@@ -195,3 +195,35 @@ def test_stream_queue_timeout_returns_retry_after(monkeypatch) -> None:
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "5"
     assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
+
+
+def test_stream_backend_error_is_emitted_as_sse_event(monkeypatch) -> None:
+    lease = StreamLease(model="qwen3:1.7b", request_id="stream-request")
+
+    async def prepared_stream(payload: dict, request_id: str | None = None) -> StreamLease:
+        return lease
+
+    async def failing_stream(
+        payload: dict, request_id: str | None = None, *, lease: StreamLease | None = None
+    ):
+        async def events():
+            raise InferenceError("MODEL_TIMEOUT", "generation timed out", True, 504)
+            yield ""
+
+        return events()
+
+    monkeypatch.setattr(scheduler, "prepare_stream", prepared_stream)
+    monkeypatch.setattr(scheduler, "stream", failing_stream)
+    monkeypatch.setattr(scheduler, "release_stream", lambda _lease: None)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert '"code": "MODEL_TIMEOUT"' in response.text
+    assert "data: [DONE]" in response.text
