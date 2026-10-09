@@ -102,6 +102,7 @@ class Scheduler:
                 self._semaphore.acquire(), timeout=settings.queue_timeout_seconds
             )
         except TimeoutError as exc:
+            QUEUE_WAIT.labels(model=model).observe(time.perf_counter() - enqueued)
             QUEUE_TIMEOUTS.inc()
             raise InferenceError(
                 "QUEUE_TIMEOUT",
