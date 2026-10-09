@@ -85,7 +85,11 @@ async def embeddings(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     return JSONResponse(
         content={
@@ -101,7 +105,11 @@ async def embeddings(
             "model": model,
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         },
-        headers={"X-Request-ID": request_id},
+        headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
     )
 
 
@@ -183,7 +191,11 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     if payload.stream:
         return StreamingResponse(
@@ -205,7 +217,11 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     result.pop("_inference", None)
     result.setdefault("id", request_id)
