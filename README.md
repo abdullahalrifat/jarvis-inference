@@ -4,15 +4,18 @@ Production-grade CPU inference gateway for the Jarvis stack.
 
 ## Architecture
 
-    Jarvis / AI Stack
-            |
-            v
-    jarvis-inference
-            |
-            v
-         Ollama
+```text
+Jarvis CLI (local agent)           AI Stack (optional remote control plane)
+          |                                      |
+          +------------------+-------------------+
+                             v
+                     jarvis-inference
+                    OpenAI-compatible API
+                             |
+                           Ollama
+```
 
-The dedicated inference VM owns model execution. AI Stack and Jarvis do not run Ollama or LiteLLM.
+The dedicated inference VM owns model execution. Jarvis and AI Stack are independent sibling consumers of the gateway; neither consumer runs Ollama or LiteLLM. Jarvis local execution must remain usable when AI Stack is stopped. The gateway owns the model allowlist, bounded queue, concurrency, backend timeouts and resource limits.
 
 ## Production profile
 
@@ -60,7 +63,7 @@ cd jarvis-inference
 cp .env.example .env
 ```
 
-For a dedicated inference VM serving another machine, set:
+For a dedicated inference VM serving either standalone Jarvis or AI Stack, set:
 
 ```env
 INFERENCE_BIND_ADDRESS=0.0.0.0
