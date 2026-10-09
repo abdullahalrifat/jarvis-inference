@@ -35,7 +35,6 @@ from inference.models import model_manager
 from inference.resources import admit_request
 
 
-
 @dataclass
 class StreamLease:
     """An admitted streaming request whose slot must be released exactly once."""
