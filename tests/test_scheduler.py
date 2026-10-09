@@ -326,3 +326,35 @@ async def test_stream_preparation_failure_releases_slot_and_queue(
     assert scheduler.status()["queue_depth"] == 0
     assert scheduler.status()["available_slots"] == 1
     assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_embedding_batch_limit_rejects_before_queueing(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    monkeypatch.setattr("inference.scheduler.settings.max_embedding_batch_size", 2)
+
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.embeddings("nomic-embed-text", ["one", "two", "three"])
+
+    assert caught.value.code == "EMBEDDING_BATCH_TOO_LARGE"
+    assert caught.value.status_code == 400
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_context_override_cannot_exceed_configured_limit(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    monkeypatch.setattr("inference.scheduler.settings.max_context_length", 8192)
+
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.chat(
+            {"model": "qwen3:1.7b", "messages": [], "num_ctx": 16384}
+        )
+
+    assert caught.value.code == "CONTEXT_LIMIT_EXCEEDED"
+    assert caught.value.status_code == 400
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
