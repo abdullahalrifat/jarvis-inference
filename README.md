@@ -1,5 +1,7 @@
 # jarvis-inference
 
+Current release candidate: **0.3.1** (authentication fail-closed and timeout replay protection). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 Production-grade CPU inference gateway for the Jarvis stack.
 
 ## Architecture
