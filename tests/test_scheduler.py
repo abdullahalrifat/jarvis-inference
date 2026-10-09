@@ -276,13 +276,9 @@ async def test_model_preparation_waits_until_slot_is_acquired(
         return True
 
     monkeypatch.setattr(scheduler, "_prepare", blocked_prepare)
-    first = asyncio.create_task(
-        scheduler.chat({"model": "qwen3:1.7b", "messages": []})
-    )
+    first = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
     await entered_prepare.wait()
-    second = asyncio.create_task(
-        scheduler.chat({"model": "qwen3:1.7b", "messages": []})
-    )
+    second = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
 
     with pytest.raises(InferenceError) as caught:
         await second
