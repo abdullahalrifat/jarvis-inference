@@ -285,9 +285,9 @@ async def _stream(
                         "total_tokens": int(data.get("prompt_eval_count") or 0)
                         + int(data.get("eval_count") or 0),
                     }
-                yield f"data: {json.dumps(chunk)}\\n\\n"
+                yield f"data: {json.dumps(chunk)}\n\n"
             else:
-                yield f"data: {line}\\n\\n"
+                yield f"data: {line}\n\n"
     except InferenceError as exc:
         # Once SSE headers are committed, communicate backend failures as an
         # OpenAI-compatible error event rather than abruptly truncating the stream.
@@ -299,7 +299,7 @@ async def _stream(
                 "request_id": request_id,
             }
         }
-        yield f"data: {json.dumps(error_event)}\\n\\n"
-        yield "data: [DONE]\\n\\n"
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
         return
-    yield "data: [DONE]\\n\\n"
+    yield "data: [DONE]\n\n"
