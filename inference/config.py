@@ -22,7 +22,10 @@ class Settings:
     port: int = field(default_factory=lambda: _int("INFERENCE_PORT", 8080))
     api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", "").strip())
     allow_insecure_no_auth: bool = field(
-        default_factory=lambda: os.getenv("INFERENCE_ALLOW_INSECURE_NO_AUTH", "false").strip().lower() in {"1", "true", "yes"}
+        default_factory=lambda: (
+            os.getenv("INFERENCE_ALLOW_INSECURE_NO_AUTH", "false").strip().lower()
+            in {"1", "true", "yes"}
+        )
     )
     max_concurrent_requests: int = field(
         default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
