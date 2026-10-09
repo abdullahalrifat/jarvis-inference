@@ -191,6 +191,13 @@ class Scheduler:
                 False,
                 400,
             )
+        if len(inputs) > settings.max_embedding_batch_size:
+            raise InferenceError(
+                "EMBEDDING_BATCH_TOO_LARGE",
+                f"Embedding batch exceeds the limit of {settings.max_embedding_batch_size} inputs",
+                False,
+                400,
+            )
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
@@ -257,6 +264,14 @@ class Scheduler:
     async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         model_manager.validate_chat(model)
+        requested_context = payload.get("num_ctx")
+        if requested_context is not None and int(requested_context) > settings.max_context_length:
+            raise InferenceError(
+                "CONTEXT_LIMIT_EXCEEDED",
+                f"num_ctx cannot exceed the configured limit of {settings.max_context_length}",
+                False,
+                400,
+            )
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
@@ -332,6 +347,14 @@ class Scheduler:
         """Admit a stream before HTTP headers are committed by StreamingResponse."""
         model = str(payload.get("model") or settings.default_model)
         model_manager.validate_chat(model)
+        requested_context = payload.get("num_ctx")
+        if requested_context is not None and int(requested_context) > settings.max_context_length:
+            raise InferenceError(
+                "CONTEXT_LIMIT_EXCEEDED",
+                f"num_ctx cannot exceed the configured limit of {settings.max_context_length}",
+                False,
+                400,
+            )
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
