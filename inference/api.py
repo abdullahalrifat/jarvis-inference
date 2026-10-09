@@ -30,7 +30,11 @@ def _encode_embedding(vector: list[float], encoding_format: str) -> list[float] 
 
 
 def _auth(value: str | None) -> None:
-    if settings.api_key and not hmac.compare_digest(value or "", settings.api_key):
+    if not settings.api_key:
+        if settings.allow_insecure_no_auth:
+            return
+        raise HTTPException(503, "Inference API authentication is not configured")
+    if not hmac.compare_digest(value or "", settings.api_key):
         raise HTTPException(401, "Invalid inference API key")
 
 
