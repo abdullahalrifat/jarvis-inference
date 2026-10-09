@@ -24,6 +24,9 @@ class FakeClient:
         self.calls.append((url, json))
         return FakeResponse(self.payload)
 
+    async def aclose(self):
+        return None
+
 
 @pytest.mark.asyncio
 async def test_embeddings_batch_all_inputs_in_one_request():
