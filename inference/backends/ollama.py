@@ -58,20 +58,26 @@ class OllamaBackend:
         ]
 
     async def embeddings(self, model: str, inputs: list[str]) -> list[list[float]]:
+        if not inputs:
+            return []
         try:
-            vectors: list[list[float]] = []
-            for text in inputs:
-                response = await self._client.post(
-                    f"{settings.ollama_url}/api/embed",
-                    json={"model": model, "input": text},
+            # Ollama accepts a list of input strings. Batch one gateway request
+            # instead of paying HTTP/setup overhead once per string, while
+            # preserving response order for callers such as Qdrant upserts.
+            response = await self._client.post(
+                f"{settings.ollama_url}/api/embed",
+                json={"model": model, "input": inputs},
+            )
+            response.raise_for_status()
+            embeddings = response.json().get("embeddings") or []
+            if len(embeddings) != len(inputs) or any(not vector for vector in embeddings):
+                raise InferenceError(
+                    "BACKEND_ERROR",
+                    "Ollama returned an incomplete embedding batch",
+                    True,
+                    503,
                 )
-                response.raise_for_status()
-                data = response.json()
-                embeddings = data.get("embeddings") or []
-                if not embeddings:
-                    raise InferenceError("BACKEND_ERROR", "Ollama returned no embedding", True, 503)
-                vectors.append([float(value) for value in embeddings[0]])
-            return vectors
+            return [[float(value) for value in vector] for vector in embeddings]
         except httpx.TimeoutException as exc:
             raise InferenceError(
                 "EMBEDDING_TIMEOUT", "Embedding request timed out", True, 504
