@@ -251,6 +251,7 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
+        queued = True
         try:
             try:
                 await self._acquire_slot(model, enqueued, request_id)
@@ -324,6 +325,7 @@ class Scheduler:
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
+        queued = True
         started: float | None = None
         first_token: float | None = None
         try:
