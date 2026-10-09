@@ -42,6 +42,8 @@ Constrained 2-vCPU / 10-GiB hosts (such as a small homelab VM) should retain the
 
 The default `MAX_LOADED_MODELS=1` is intentionally conservative. Compose now honors this setting for Ollama as well as the gateway's model manager. A two-model setting may reduce cold reloads when alternating between `qwen3:1.7b` and `nomic-embed-text`, but benchmark it on the actual VM first; do not increase it blindly because `qwen3:4b` and context memory also compete for the 8-GiB Ollama limit.
 
+For CPU-only deployments, `MAX_CONTEXT_LENGTH` defaults to 8192 and request-level `num_ctx` overrides above that cap are rejected before queue admission. `MAX_EMBEDDING_BATCH_SIZE` defaults to 64 inputs per request to bound memory and latency; split larger ingestion jobs into smaller batches. Raise either limit only after measuring peak RAM and throughput on the target VM.
+
 Both profiles preserve:
 
 - One active generation
