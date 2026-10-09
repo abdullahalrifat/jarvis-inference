@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.3
+
+### Reliability
+
+- Acquire the bounded inference slot before refreshing backend model state, preventing concurrent queued requests from duplicating model-state checks.
+- Increase the default queue wait to 90 seconds to match realistic CPU-only generation latency while retaining bounded queue size and single-request concurrency.
+- Return `Retry-After` guidance for explicit queue-full and queue-timeout rejections.
+
+### Tests
+
+- Cover serialized model preparation and queue/slot cleanup after a waiting request times out.
+
+
 ## 0.3.2
 
 ### Performance and reliability
