@@ -6,7 +6,7 @@ Production-grade CPU inference gateway for the Jarvis stack.
 
 ## Queueing and CPU-only operation
 
-The gateway intentionally runs one generation at a time on small CPU-only hosts. A bounded queue prevents unbounded work accumulation; `QUEUE_TIMEOUT_SECONDS` controls how long a request waits for a slot (default: 90 seconds), while `MAX_QUEUE_SIZE` remains bounded. Queue timeout and queue-full responses are explicit pre-generation rejections and include `Retry-After` guidance. Clients must not retry ambiguous generation/read timeouts because the backend may already have executed the request.
+The gateway intentionally runs one generation at a time on small CPU-only hosts. A bounded waiting queue prevents unbounded work accumulation; `QUEUE_TIMEOUT_SECONDS` controls how long a request waits for a slot (default: 90 seconds), while `MAX_QUEUE_SIZE` bounds waiting requests separately from the active inference slot. Queue-depth telemetry counts waiting requests, not the active generation. Queue timeout and queue-full responses are explicit pre-generation rejections and include `Retry-After` guidance. Clients must not retry ambiguous generation/read timeouts because the backend may already have executed the request.
 
 Backend model-state refreshes occur only after a request owns the inference slot, avoiding redundant concurrent refresh work while another generation is active. Increasing the queue deadline improves tolerance to normal long generations; it does not increase throughput.
 
