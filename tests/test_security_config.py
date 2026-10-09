@@ -1,10 +1,10 @@
-import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import pytest
 
 from inference.api import _auth
 from inference.config import settings, validate_security_config
 from inference.main import app
-from fastapi import HTTPException
 
 
 def test_startup_fails_closed_without_api_key(monkeypatch):
