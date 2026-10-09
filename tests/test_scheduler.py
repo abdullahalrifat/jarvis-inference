@@ -356,3 +356,32 @@ async def test_context_override_cannot_exceed_configured_limit(
     assert caught.value.status_code == 400
     assert scheduler.status()["queue_depth"] == 0
     assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_queue_timeout_is_included_in_wait_latency_metrics(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    observed = []
+
+    class HistogramChild:
+        def observe(self, value: float) -> None:
+            observed.append(value)
+
+    class Histogram:
+        def labels(self, **_labels):
+            return HistogramChild()
+
+    monkeypatch.setattr("inference.scheduler.QUEUE_WAIT", Histogram())
+    monkeypatch.setattr("inference.scheduler.settings.queue_timeout_seconds", 0.001)
+    await scheduler._semaphore.acquire()
+
+    try:
+        with pytest.raises(InferenceError) as caught:
+            await scheduler._acquire_slot("qwen3:1.7b", 0.0, "queue-timeout-test")
+    finally:
+        scheduler._semaphore.release()
+
+    assert caught.value.code == "QUEUE_TIMEOUT"
+    assert len(observed) == 1
+    assert observed[0] > 0
