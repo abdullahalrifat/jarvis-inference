@@ -12,8 +12,8 @@ services:
       OLLAMA_CONTEXT_LENGTH: "8192"
     volumes:
       - ollama:/root/.ollama
-    cpus: ${OLLAMA_CPUS:-2.75}
-    mem_limit: ${OLLAMA_MEMORY_LIMIT:-9g}
+    cpus: ${OLLAMA_CPUS:-1.5}
+    mem_limit: ${OLLAMA_MEMORY_LIMIT:-8g}
     pids_limit: 256
     security_opt:
       - no-new-privileges:true
@@ -44,8 +44,8 @@ services:
         condition: service_healthy
     ports:
       - "${INFERENCE_BIND_ADDRESS:-127.0.0.1}:${INFERENCE_PORT:-8080}:8080"
-    cpus: ${INFERENCE_CPUS:-0.50}
-    mem_limit: ${INFERENCE_MEMORY_LIMIT:-512m}
+    cpus: ${INFERENCE_CPUS:-0.4}
+    mem_limit: ${INFERENCE_MEMORY_LIMIT:-1g}
     pids_limit: 128
     security_opt:
       - no-new-privileges:true
