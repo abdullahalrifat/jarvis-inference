@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from inference.errors import InferenceError
 from inference.main import app
 from inference.scheduler import scheduler
 
@@ -154,3 +155,18 @@ def test_embeddings_support_base64_encoding(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["data"][0]["embedding"] == "AACAPwAAIMA="
+
+
+def test_queue_timeout_returns_retry_after(monkeypatch) -> None:
+    async def timed_out_chat(payload: dict, request_id: str | None = None) -> dict:
+        raise InferenceError("QUEUE_TIMEOUT", "queue wait expired", True, 429)
+
+    monkeypatch.setattr(scheduler, "chat", timed_out_chat)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={"model": "qwen3:1.7b", "messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "5"
+    assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
