@@ -157,6 +157,8 @@ async def test_cancellation_releases_queue_and_active_slot(
     scheduler._ollama = BlockingBackend()
     task = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
     await asyncio.sleep(0.01)
+    assert scheduler.status()["queue_depth"] == 0
+    assert len(scheduler.status()["active_requests"]) == 1
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
@@ -250,7 +252,7 @@ async def test_waiting_request_times_out_without_blocking(
         await second
 
     assert exc.value.code == "QUEUE_TIMEOUT"
-    assert scheduler.status()["queue_depth"] == 1
+    assert scheduler.status()["queue_depth"] == 0
     first.cancel()
     with pytest.raises(asyncio.CancelledError):
         await first
