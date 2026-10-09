@@ -30,8 +30,8 @@ class FakeClient:
 
 @pytest.mark.asyncio
 async def test_embeddings_batch_all_inputs_in_one_request():
-    backend = OllamaBackend()
     client = FakeClient({"embeddings": [[1, 2], [3, 4]]})
+    backend = object.__new__(OllamaBackend)
     backend._client = client
 
     result = await backend.embeddings("nomic-embed-text", ["first", "second"])
@@ -44,8 +44,8 @@ async def test_embeddings_batch_all_inputs_in_one_request():
 
 @pytest.mark.asyncio
 async def test_embeddings_empty_batch_does_not_call_backend():
-    backend = OllamaBackend()
     client = FakeClient({"embeddings": []})
+    backend = object.__new__(OllamaBackend)
     backend._client = client
 
     assert await backend.embeddings("nomic-embed-text", []) == []
@@ -55,8 +55,8 @@ async def test_embeddings_empty_batch_does_not_call_backend():
 
 @pytest.mark.asyncio
 async def test_embeddings_reject_incomplete_batch():
-    backend = OllamaBackend()
     client = FakeClient({"embeddings": [[1, 2]]})
+    backend = object.__new__(OllamaBackend)
     backend._client = client
 
     with pytest.raises(InferenceError, match="incomplete embedding batch"):
