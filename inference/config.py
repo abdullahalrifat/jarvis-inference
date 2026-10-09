@@ -57,7 +57,7 @@ class Settings:
         default_factory=lambda: max(1.0, _float("EMBEDDING_TIMEOUT_SECONDS", 30.0))
     )
     queue_timeout_seconds: float = field(
-        default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 15.0))
+        default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 90.0))
     )
     shutdown_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("SHUTDOWN_TIMEOUT_SECONDS", 30.0))
