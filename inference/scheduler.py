@@ -180,8 +180,8 @@ class Scheduler:
         acquired = False
         try:
             try:
-                warm = await self._prepare(model, chat=False)
                 await self._acquire_slot(model, enqueued, request_id)
+                warm = await self._prepare(model, chat=False)
                 acquired = True
                 try:
                     admit_request()
@@ -235,14 +235,15 @@ class Scheduler:
 
     async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
+        model_manager.validate_chat(model)
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
         acquired = False
         try:
             try:
-                warm = await self._prepare(model)
                 await self._acquire_slot(model, enqueued, request_id)
+                warm = await self._prepare(model)
                 acquired = True
                 try:
                     admit_request()
@@ -304,6 +305,7 @@ class Scheduler:
         self, payload: dict[str, Any], request_id: str | None = None
     ) -> AsyncIterator[str]:
         model = str(payload.get("model") or settings.default_model)
+        model_manager.validate_chat(model)
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
