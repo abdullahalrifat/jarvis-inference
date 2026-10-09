@@ -256,3 +256,40 @@ async def test_waiting_request_times_out_without_blocking(
         await first
     assert scheduler.status()["queue_depth"] == 0
     assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_model_preparation_waits_until_slot_is_acquired(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    scheduler._ollama = FakeBackend()
+    monkeypatch.setattr("inference.scheduler.settings.queue_timeout_seconds", 0.01)
+    entered_prepare = asyncio.Event()
+    allow_prepare = asyncio.Event()
+    prepare_calls = 0
+
+    async def blocked_prepare(model: str, *, chat: bool = True) -> bool:
+        nonlocal prepare_calls
+        prepare_calls += 1
+        entered_prepare.set()
+        await allow_prepare.wait()
+        return True
+
+    monkeypatch.setattr(scheduler, "_prepare", blocked_prepare)
+    first = asyncio.create_task(
+        scheduler.chat({"model": "qwen3:1.7b", "messages": []})
+    )
+    await entered_prepare.wait()
+    second = asyncio.create_task(
+        scheduler.chat({"model": "qwen3:1.7b", "messages": []})
+    )
+
+    with pytest.raises(InferenceError) as caught:
+        await second
+
+    assert caught.value.code == "QUEUE_TIMEOUT"
+    assert prepare_calls == 1
+    allow_prepare.set()
+    await first
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
