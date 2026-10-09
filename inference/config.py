@@ -80,6 +80,12 @@ class Settings:
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
     ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
+    max_context_length: int = field(
+        default_factory=lambda: max(512, _int("MAX_CONTEXT_LENGTH", 8192))
+    )
+    max_embedding_batch_size: int = field(
+        default_factory=lambda: max(1, _int("MAX_EMBEDDING_BATCH_SIZE", 64))
+    )
 
     @property
     def request_timeout_seconds(self) -> float:
