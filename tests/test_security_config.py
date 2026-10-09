@@ -1,6 +1,6 @@
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-import pytest
 
 from inference.api import _auth
 from inference.config import settings, validate_security_config
