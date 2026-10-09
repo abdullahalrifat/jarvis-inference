@@ -1,4 +1,5 @@
 """Test-only defaults for exercising unauthenticated local API paths."""
+
 import pytest
 
 from inference.config import settings
