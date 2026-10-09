@@ -314,8 +314,8 @@ class Scheduler:
         first_token: float | None = None
         try:
             try:
-                warm = await self._prepare(model)
                 await self._acquire_slot(model, enqueued, request_id)
+                warm = await self._prepare(model)
                 acquired = True
                 try:
                     admit_request()
