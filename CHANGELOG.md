@@ -9,6 +9,7 @@
 - Reuse cached model discovery during readiness probes instead of forcing redundant backend calls, and align OpenAPI version metadata with package version 0.3.3.
 - Honor `MAX_LOADED_MODELS` in Compose while preserving the safe default of one model; this enables measured two-model residency experiments without changing default memory behavior.
 - Bound per-request context overrides and embedding batch size before queue admission to protect CPU-only hosts from oversized requests.
+- Include timed-out requests in queue-wait latency histograms so observed wait distributions are not biased toward successful admissions.
 - Increase the default queue wait to 90 seconds to match realistic CPU-only generation latency while retaining bounded queue size and single-request concurrency.
 - Return `Retry-After` guidance for explicit queue-full and queue-timeout rejections, including streaming requests before SSE headers are committed.
 
