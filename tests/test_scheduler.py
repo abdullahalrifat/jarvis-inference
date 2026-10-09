@@ -350,9 +350,7 @@ async def test_context_override_cannot_exceed_configured_limit(
     monkeypatch.setattr("inference.scheduler.settings.max_context_length", 8192)
 
     with pytest.raises(InferenceError) as caught:
-        await scheduler.chat(
-            {"model": "qwen3:1.7b", "messages": [], "num_ctx": 16384}
-        )
+        await scheduler.chat({"model": "qwen3:1.7b", "messages": [], "num_ctx": 16384})
 
     assert caught.value.code == "CONTEXT_LIMIT_EXCEEDED"
     assert caught.value.status_code == 400
