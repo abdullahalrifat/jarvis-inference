@@ -1,8 +1,12 @@
 # jarvis-inference
 
-Current release candidate: **0.3.1** (authentication fail-closed and timeout replay protection). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release candidate: **0.3.2** (authentication fail-closed and timeout replay protection). See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Production-grade CPU inference gateway for the Jarvis stack.
+
+## Embedding efficiency
+
+Embedding requests are sent to Ollama as a batch rather than one HTTP request per text. Response order is preserved, incomplete batches fail explicitly, and an empty batch performs no backend request. Batching reduces request overhead; it does not claim to eliminate embedding compute.
 
 ## Architecture
 
