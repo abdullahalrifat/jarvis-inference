@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -32,6 +33,16 @@ from inference.metrics import (
 )
 from inference.models import model_manager
 from inference.resources import admit_request
+
+
+
+@dataclass
+class StreamLease:
+    """An admitted streaming request whose slot must be released exactly once."""
+
+    model: str
+    request_id: str
+    released: bool = False
 
 
 class Scheduler:
@@ -316,9 +327,10 @@ class Scheduler:
             if queued:
                 await self._release()
 
-    async def stream(
+    async def prepare_stream(
         self, payload: dict[str, Any], request_id: str | None = None
-    ) -> AsyncIterator[str]:
+    ) -> StreamLease:
+        """Admit a stream before HTTP headers are committed by StreamingResponse."""
         model = str(payload.get("model") or settings.default_model)
         model_manager.validate_chat(model)
         request_id = request_id or self._new_request_id()
@@ -326,88 +338,118 @@ class Scheduler:
         enqueued = time.perf_counter()
         acquired = False
         queued = True
-        started: float | None = None
-        first_token: float | None = None
+        lease_created = False
         try:
+            await self._acquire_slot(model, enqueued, request_id)
+            acquired = True
+            self._dequeue()
+            queued = False
+            warm = await self._prepare(model)
             try:
-                await self._acquire_slot(model, enqueued, request_id)
-                acquired = True
-                self._dequeue()
-                queued = False
-                warm = await self._prepare(model)
-                try:
-                    admit_request()
-                except InferenceError:
-                    RESOURCE_REJECTIONS.inc()
-                    raise
-                model_manager.activate(model, warm)
-                ACTIVE_MODEL.labels(model=model).set(1)
-                started = time.perf_counter()
-                try:
-                    async with asyncio.timeout(settings.stream_timeout_seconds):
-                        async for line in self.backend.stream(model, payload):
-                            now = time.perf_counter()
-                            if first_token is None:
-                                first_token = now
-                                TTFT.labels(model=model).observe(now - started)
-                            try:
-                                event = json.loads(line)
-                            except (TypeError, ValueError):
-                                event = {}
-                            if event.get("done"):
-                                load = float(event.get("load_duration") or 0) / 1e9
-                                generation = float(event.get("eval_duration") or 0) / 1e9
-                                completion = int(event.get("eval_count") or 0)
-                                if load:
-                                    MODEL_LOAD.labels(model=model).observe(load)
-                                if generation:
-                                    GENERATION_DURATION.labels(model=model).observe(generation)
-                                if completion:
-                                    TOKENS.labels(model=model, kind="completion").inc(completion)
-                                    if generation:
-                                        TOKENS_PER_SECOND.labels(model=model).observe(
-                                            completion / generation
-                                        )
-                            yield line
-                    self.circuit.success()
-                    self._record_circuit()
-                    model_manager.record_loaded(model)
-                    REQUESTS.labels(model=model, status="success").inc()
-                except asyncio.CancelledError:
-                    CANCELLED_REQUESTS.labels(kind="stream").inc()
-                    raise
-                except InferenceError as exc:
-                    self._backend_failure(exc)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise
-                except TimeoutError as exc:
-                    error = InferenceError(
-                        "MODEL_TIMEOUT",
-                        f"Streaming request timed out after {settings.stream_timeout_seconds:.1f}s",
-                        True,
-                        504,
-                    )
-                    self._backend_failure(error)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise error from exc
-                except Exception as exc:
-                    error = InferenceError("INFERENCE_ERROR", str(exc), True, 503)
-                    self._backend_failure(error)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise error from exc
-                finally:
-                    ACTIVE_MODEL.labels(model=model).set(0)
-                    if started is not None:
-                        LATENCY.labels(model=model).observe(time.perf_counter() - started)
-            except asyncio.CancelledError:
-                if not acquired:
-                    CANCELLED_REQUESTS.labels(kind="queued").inc()
+                admit_request()
+            except InferenceError:
+                RESOURCE_REJECTIONS.inc()
                 raise
+            model_manager.activate(model, warm)
+            ACTIVE_MODEL.labels(model=model).set(1)
+            lease = StreamLease(model=model, request_id=request_id)
+            lease_created = True
+            return lease
+        except asyncio.CancelledError:
+            if not acquired:
+                CANCELLED_REQUESTS.labels(kind="queued").inc()
+            raise
         finally:
-            if acquired:
+            # Preparation failures must not leak the semaphore or queue token.
+            if acquired and not lease_created:
                 self._release_slot(request_id, model)
             if queued:
                 await self._release()
+
+    def release_stream(self, lease: StreamLease) -> None:
+        """Release a prepared stream slot idempotently (also used by response cleanup)."""
+        if lease.released:
+            return
+        lease.released = True
+        ACTIVE_MODEL.labels(model=lease.model).set(0)
+        self._release_slot(lease.request_id, lease.model)
+
+    async def stream(
+        self,
+        payload: dict[str, Any],
+        request_id: str | None = None,
+        *,
+        lease: StreamLease | None = None,
+    ) -> AsyncIterator[str]:
+        """Return a streaming iterator, admitting the request before the first body byte."""
+        prepared = lease or await self.prepare_stream(payload, request_id)
+        return self._stream_prepared(payload, prepared)
+
+    async def _stream_prepared(
+        self, payload: dict[str, Any], lease: StreamLease
+    ) -> AsyncIterator[str]:
+        model = lease.model
+        started: float | None = None
+        first_token: float | None = None
+        try:
+            started = time.perf_counter()
+            try:
+                async with asyncio.timeout(settings.stream_timeout_seconds):
+                    async for line in self.backend.stream(model, payload):
+                        now = time.perf_counter()
+                        if first_token is None:
+                            first_token = now
+                            TTFT.labels(model=model).observe(now - started)
+                        try:
+                            event = json.loads(line)
+                        except (TypeError, ValueError):
+                            event = {}
+                        if event.get("done"):
+                            load = float(event.get("load_duration") or 0) / 1e9
+                            generation = float(event.get("eval_duration") or 0) / 1e9
+                            completion = int(event.get("eval_count") or 0)
+                            if load:
+                                MODEL_LOAD.labels(model=model).observe(load)
+                            if generation:
+                                GENERATION_DURATION.labels(model=model).observe(generation)
+                            if completion:
+                                TOKENS.labels(model=model, kind="completion").inc(completion)
+                                if generation:
+                                    TOKENS_PER_SECOND.labels(model=model).observe(
+                                        completion / generation
+                                    )
+                        yield line
+                self.circuit.success()
+                self._record_circuit()
+                model_manager.record_loaded(model)
+                REQUESTS.labels(model=model, status="success").inc()
+            except asyncio.CancelledError:
+                CANCELLED_REQUESTS.labels(kind="stream").inc()
+                raise
+            except InferenceError as exc:
+                self._backend_failure(exc)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise
+            except TimeoutError as exc:
+                error = InferenceError(
+                    "MODEL_TIMEOUT",
+                    f"Streaming request timed out after {settings.stream_timeout_seconds:.1f}s",
+                    True,
+                    504,
+                )
+                self._backend_failure(error)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise error from exc
+            except Exception as exc:
+                error = InferenceError("INFERENCE_ERROR", str(exc), True, 503)
+                self._backend_failure(error)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise error from exc
+            finally:
+                if started is not None:
+                    LATENCY.labels(model=model).observe(time.perf_counter() - started)
+        finally:
+            self.release_stream(lease)
 
     def status(self) -> dict[str, Any]:
         active = []
