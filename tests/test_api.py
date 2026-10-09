@@ -5,6 +5,12 @@ from inference.main import app
 from inference.scheduler import scheduler
 
 
+def test_openapi_reports_package_version() -> None:
+    response = TestClient(app).get("/openapi.json")
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == "0.3.3"
+
+
 def test_health() -> None:
     response = TestClient(app).get("/health")
     assert response.status_code == 200
