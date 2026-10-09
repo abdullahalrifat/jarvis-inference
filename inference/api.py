@@ -10,13 +10,14 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
 from inference.resources import status as resource_status
-from inference.scheduler import scheduler
+from inference.scheduler import StreamLease, scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
@@ -194,14 +195,31 @@ async def chat(
             },
         ) from exc
     if payload.stream:
+        try:
+            lease = await scheduler.prepare_stream(body, request_id=request_id)
+        except InferenceError as exc:
+            raise HTTPException(
+                exc.status_code,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "retryable": exc.retryable,
+                },
+                headers={
+                    "X-Request-ID": request_id,
+                    **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                    **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+                },
+            ) from exc
         return StreamingResponse(
-            _stream(body, request_id),
+            _stream(body, request_id, lease),
             media_type="text/event-stream",
             headers={
                 "X-Request-ID": request_id,
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
             },
+            background=BackgroundTask(scheduler.release_stream, lease),
         )
     try:
         result = await scheduler.chat(body, request_id=request_id)
@@ -228,11 +246,14 @@ async def chat(
     return JSONResponse(content=result, headers={"X-Request-ID": request_id})
 
 
-async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
+async def _stream(
+    body: dict[str, object], request_id: str, lease: StreamLease
+) -> AsyncIterator[str]:
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
-    async for line in scheduler.stream(body, request_id=request_id):
+    stream = await scheduler.stream(body, request_id=request_id, lease=lease)
+    async for line in stream:
         if backend.name == "ollama":
             data = backend.sse_data(line)
             message = data.get("message") or {}
