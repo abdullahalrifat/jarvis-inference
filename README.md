@@ -40,6 +40,8 @@ Recommended CPU-only VM for comfortable headroom:
 
 Constrained 2-vCPU / 10-GiB hosts (such as a small homelab VM) should retain the lower defaults in `.env.example`: Ollama 1.5 CPU / 8 GiB and gateway 0.4 CPU / 1 GiB. Do not copy the larger production CPU limits onto a 2-vCPU VM without benchmarking and host-headroom checks.
 
+The default `MAX_LOADED_MODELS=1` is intentionally conservative. Compose now honors this setting for Ollama as well as the gateway's model manager. A two-model setting may reduce cold reloads when alternating between `qwen3:1.7b` and `nomic-embed-text`, but benchmark it on the actual VM first; do not increase it blindly because `qwen3:4b` and context memory also compete for the 8-GiB Ollama limit.
+
 Both profiles preserve:
 
 - One active generation
