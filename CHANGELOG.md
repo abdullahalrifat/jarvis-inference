@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.2
+
+### Performance and reliability
+
+- Batch embedding inputs into one Ollama `/api/embed` request, preserving input order and rejecting incomplete batches.
+- Return immediately for an empty embedding batch without waking the backend.
+
+### Tests
+
+- Cover batching, response ordering, empty input, and incomplete backend responses.
+
+
 ## 0.3.1
 
 ### Security
