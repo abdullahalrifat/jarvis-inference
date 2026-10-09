@@ -35,7 +35,7 @@ Run:
 bash scripts/install.sh
 ```
 
-The installer validates the deployment, builds the gateway, starts Ollama, ensures configured models exist, waits for readiness, and runs smoke checks.
+The installer validates the deployment, builds the gateway, starts Ollama, ensures configured models exist, waits for readiness, and runs smoke checks. Set a non-empty `INFERENCE_API_KEY` before deploying; the service refuses startup without one unless the explicit development-only override is enabled.
 
 ## Operations
 
