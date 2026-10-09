@@ -292,3 +292,39 @@ async def test_model_preparation_waits_until_slot_is_acquired(
     await first
     assert scheduler.status()["queue_depth"] == 0
     assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_model_preparation_failure_releases_slot_and_queue(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    async def fail_prepare(model: str, *, chat: bool = True) -> bool:
+        raise InferenceError("BACKEND_UNAVAILABLE", "backend unavailable", True, 503)
+
+    monkeypatch.setattr(scheduler, "_prepare", fail_prepare)
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.chat({"model": "qwen3:1.7b", "messages": []})
+
+    assert caught.value.code == "BACKEND_UNAVAILABLE"
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+    assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_stream_preparation_failure_releases_slot_and_queue(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    async def fail_prepare(model: str, *, chat: bool = True) -> bool:
+        raise InferenceError("BACKEND_UNAVAILABLE", "backend unavailable", True, 503)
+
+    monkeypatch.setattr(scheduler, "_prepare", fail_prepare)
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.prepare_stream(
+            {"model": "qwen3:1.7b", "messages": []}
+        )
+
+    assert caught.value.code == "BACKEND_UNAVAILABLE"
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+    assert scheduler.status()["active_requests"] == []
