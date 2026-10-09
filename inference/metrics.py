@@ -27,7 +27,7 @@ TOKENS_PER_SECOND = Histogram(
     "inference_tokens_per_second", "Observed output token generation rate.", ["model"]
 )
 MODEL_LOAD = Histogram("inference_model_load_seconds", "Observed model load duration.", ["model"])
-QUEUE = Gauge("inference_queue_depth", "Current queued requests.")
+QUEUE = Gauge("inference_queue_depth", "Requests waiting for an inference slot.")
 ACTIVE_REQUESTS = Gauge("inference_active_requests", "Currently executing inference requests.")
 ACTIVE_REQUEST_AGE = Gauge(
     "inference_active_request_age_seconds",

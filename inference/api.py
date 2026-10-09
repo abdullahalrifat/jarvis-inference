@@ -10,13 +10,14 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
 from inference.resources import status as resource_status
-from inference.scheduler import scheduler
+from inference.scheduler import StreamLease, scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
@@ -85,7 +86,11 @@ async def embeddings(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     return JSONResponse(
         content={
@@ -183,17 +188,38 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     if payload.stream:
+        try:
+            lease = await scheduler.prepare_stream(body, request_id=request_id)
+        except InferenceError as exc:
+            raise HTTPException(
+                exc.status_code,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "retryable": exc.retryable,
+                },
+                headers={
+                    "X-Request-ID": request_id,
+                    **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                    **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+                },
+            ) from exc
         return StreamingResponse(
-            _stream(body, request_id),
+            _stream(body, request_id, lease),
             media_type="text/event-stream",
             headers={
                 "X-Request-ID": request_id,
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
             },
+            background=BackgroundTask(scheduler.release_stream, lease),
         )
     try:
         result = await scheduler.chat(body, request_id=request_id)
@@ -205,7 +231,11 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     result.pop("_inference", None)
     result.setdefault("id", request_id)
@@ -216,40 +246,60 @@ async def chat(
     return JSONResponse(content=result, headers={"X-Request-ID": request_id})
 
 
-async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
+async def _stream(
+    body: dict[str, object], request_id: str, lease: StreamLease
+) -> AsyncIterator[str]:
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
-    async for line in scheduler.stream(body, request_id=request_id):
-        if backend.name == "ollama":
-            data = backend.sse_data(line)
-            message = data.get("message") or {}
-            delta: dict[str, object] = {"content": message.get("content", "")}
-            if message.get("role"):
-                delta["role"] = message["role"]
-            if message.get("tool_calls"):
-                delta["tool_calls"] = message["tool_calls"]
-            chunk = {
-                "id": request_id,
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": delta,
-                        "finish_reason": (data.get("done_reason") if data.get("done") else None),
-                    }
-                ],
-            }
-            if data.get("done") and data.get("eval_count") is not None:
-                chunk["usage"] = {
-                    "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                    "completion_tokens": int(data.get("eval_count") or 0),
-                    "total_tokens": int(data.get("prompt_eval_count") or 0)
-                    + int(data.get("eval_count") or 0),
+    try:
+        stream = await scheduler.stream(body, request_id=request_id, lease=lease)
+        async for line in stream:
+            if backend.name == "ollama":
+                data = backend.sse_data(line)
+                message = data.get("message") or {}
+                delta: dict[str, object] = {"content": message.get("content", "")}
+                if message.get("role"):
+                    delta["role"] = message["role"]
+                if message.get("tool_calls"):
+                    delta["tool_calls"] = message["tool_calls"]
+                chunk = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": (
+                                data.get("done_reason") if data.get("done") else None
+                            ),
+                        }
+                    ],
                 }
-            yield f"data: {json.dumps(chunk)}\n\n"
-        else:
-            yield f"data: {line}\n\n"
+                if data.get("done") and data.get("eval_count") is not None:
+                    chunk["usage"] = {
+                        "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                        "completion_tokens": int(data.get("eval_count") or 0),
+                        "total_tokens": int(data.get("prompt_eval_count") or 0)
+                        + int(data.get("eval_count") or 0),
+                    }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            else:
+                yield f"data: {line}\n\n"
+    except InferenceError as exc:
+        # Once SSE headers are committed, communicate backend failures as an
+        # OpenAI-compatible error event rather than abruptly truncating the stream.
+        error_event = {
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+                "request_id": request_id,
+            }
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
     yield "data: [DONE]\n\n"
