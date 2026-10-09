@@ -69,7 +69,8 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_stream_uses_scheduler_lifecycle(scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
-    chunks = [chunk async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})]
+    stream = await scheduler.stream({"model": "qwen3:1.7b", "messages": []})
+    chunks = [chunk async for chunk in stream]
 
     assert chunks
     assert scheduler.status()["queue_depth"] == 0
