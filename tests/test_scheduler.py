@@ -320,9 +320,7 @@ async def test_stream_preparation_failure_releases_slot_and_queue(
 
     monkeypatch.setattr(scheduler, "_prepare", fail_prepare)
     with pytest.raises(InferenceError) as caught:
-        await scheduler.prepare_stream(
-            {"model": "qwen3:1.7b", "messages": []}
-        )
+        await scheduler.prepare_stream({"model": "qwen3:1.7b", "messages": []})
 
     assert caught.value.code == "BACKEND_UNAVAILABLE"
     assert scheduler.status()["queue_depth"] == 0
