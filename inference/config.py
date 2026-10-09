@@ -20,7 +20,13 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
 class Settings:
     host: str = field(default_factory=lambda: os.getenv("INFERENCE_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: _int("INFERENCE_PORT", 8080))
-    api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", ""))
+    api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", "").strip())
+    allow_insecure_no_auth: bool = field(
+        default_factory=lambda: (
+            os.getenv("INFERENCE_ALLOW_INSECURE_NO_AUTH", "false").strip().lower()
+            in {"1", "true", "yes"}
+        )
+    )
     max_concurrent_requests: int = field(
         default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
     )
@@ -94,3 +100,12 @@ class Settings:
 
 
 settings = Settings()
+
+
+def validate_security_config() -> None:
+    """Fail startup closed unless auth is configured or insecure mode is explicit."""
+    if not settings.api_key and not settings.allow_insecure_no_auth:
+        raise RuntimeError(
+            "INFERENCE_API_KEY is required. For isolated local development only, "
+            "set INFERENCE_ALLOW_INSECURE_NO_AUTH=true explicitly."
+        )

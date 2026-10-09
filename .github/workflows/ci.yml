@@ -22,3 +22,13 @@ jobs:
       - run: python -m ruff format --check .
       - run: bash -n scripts/*.sh
       - run: python -m pytest -q --cov=inference --cov-report=term-missing --cov-fail-under=70
+      - name: Write commit-bound certification manifest
+        if: always()
+        run: python scripts/write_certification_manifest.py certification-evidence.json
+      - name: Upload certification evidence manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certification-evidence-${{ github.sha }}
+          path: certification-evidence.json
+          if-no-files-found: error
