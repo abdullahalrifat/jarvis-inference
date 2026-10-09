@@ -62,3 +62,26 @@ async def test_bounded_load_never_exceeds_single_generation_slot() -> None:
     assert len(results) == 8
     assert backend.max_active == 1
     assert instance.status()["queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_backend_timeout_is_not_retried_by_gateway() -> None:
+    instance = Scheduler()
+    backend = LoadBackend()
+    calls = 0
+
+    async def timed_out_chat(model: str, payload: dict) -> dict:
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("backend read timeout")
+
+    backend.chat = timed_out_chat
+    instance._ollama = backend
+    model_manager._available.clear()
+    model_manager._loaded.clear()
+    model_manager._last_refresh = 0
+
+    with pytest.raises(Exception):
+        await instance.chat({"model": "qwen3:1.7b", "messages": []})
+
+    assert calls == 1
