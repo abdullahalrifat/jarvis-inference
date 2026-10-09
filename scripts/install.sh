@@ -47,9 +47,6 @@ for container in jarvis-inference jarvis-ollama; do
   fi
 done
 
-echo "==> Validating Compose configuration"
-docker compose -f "$COMPOSE_FILE" config --quiet
-
 echo "==> Building inference gateway"
 docker compose -f "$COMPOSE_FILE" build --pull jarvis-inference
 
