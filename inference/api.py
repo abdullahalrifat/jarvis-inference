@@ -252,37 +252,54 @@ async def _stream(
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
-    stream = await scheduler.stream(body, request_id=request_id, lease=lease)
-    async for line in stream:
-        if backend.name == "ollama":
-            data = backend.sse_data(line)
-            message = data.get("message") or {}
-            delta: dict[str, object] = {"content": message.get("content", "")}
-            if message.get("role"):
-                delta["role"] = message["role"]
-            if message.get("tool_calls"):
-                delta["tool_calls"] = message["tool_calls"]
-            chunk = {
-                "id": request_id,
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": delta,
-                        "finish_reason": (data.get("done_reason") if data.get("done") else None),
-                    }
-                ],
-            }
-            if data.get("done") and data.get("eval_count") is not None:
-                chunk["usage"] = {
-                    "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                    "completion_tokens": int(data.get("eval_count") or 0),
-                    "total_tokens": int(data.get("prompt_eval_count") or 0)
-                    + int(data.get("eval_count") or 0),
+    try:
+        stream = await scheduler.stream(body, request_id=request_id, lease=lease)
+        async for line in stream:
+            if backend.name == "ollama":
+                data = backend.sse_data(line)
+                message = data.get("message") or {}
+                delta: dict[str, object] = {"content": message.get("content", "")}
+                if message.get("role"):
+                    delta["role"] = message["role"]
+                if message.get("tool_calls"):
+                    delta["tool_calls"] = message["tool_calls"]
+                chunk = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": (
+                                data.get("done_reason") if data.get("done") else None
+                            ),
+                        }
+                    ],
                 }
-            yield f"data: {json.dumps(chunk)}\n\n"
-        else:
-            yield f"data: {line}\n\n"
-    yield "data: [DONE]\n\n"
+                if data.get("done") and data.get("eval_count") is not None:
+                    chunk["usage"] = {
+                        "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                        "completion_tokens": int(data.get("eval_count") or 0),
+                        "total_tokens": int(data.get("prompt_eval_count") or 0)
+                        + int(data.get("eval_count") or 0),
+                    }
+                yield f"data: {json.dumps(chunk)}\\n\\n"
+            else:
+                yield f"data: {line}\\n\\n"
+    except InferenceError as exc:
+        # Once SSE headers are committed, communicate backend failures as an
+        # OpenAI-compatible error event rather than abruptly truncating the stream.
+        error_event = {
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+                "request_id": request_id,
+            }
+        }
+        yield f"data: {json.dumps(error_event)}\\n\\n"
+        yield "data: [DONE]\\n\\n"
+        return
+    yield "data: [DONE]\\n\\n"
