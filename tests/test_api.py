@@ -176,3 +176,22 @@ def test_queue_timeout_returns_retry_after(monkeypatch) -> None:
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "5"
     assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
+
+
+def test_stream_queue_timeout_returns_retry_after(monkeypatch) -> None:
+    async def timed_out_stream(payload: dict, request_id: str | None = None):
+        raise InferenceError("QUEUE_TIMEOUT", "queue wait expired", True, 429)
+
+    monkeypatch.setattr(scheduler, "prepare_stream", timed_out_stream)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "5"
+    assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
