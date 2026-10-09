@@ -24,6 +24,7 @@ For cross-VM access:
 ```env
 INFERENCE_BIND_ADDRESS=0.0.0.0
 INFERENCE_API_KEY=<long-random-secret>
+INFERENCE_ALLOW_INSECURE_NO_AUTH=false
 ```
 
 Restrict TCP 8080 to the private network or trusted client IPs. Never publish Ollama port 11434.
@@ -81,6 +82,7 @@ The installer pulls only the configured model names from `.env`; model digest ch
 
 - Loopback binding is the default.
 - Remote binding is explicit.
+- Startup fails closed if `INFERENCE_API_KEY` is empty, unless `INFERENCE_ALLOW_INSECURE_NO_AUTH=true` is explicitly selected for isolated local development.
 - Remote deployments require API-key authentication.
 - Ollama is never published.
 - Gateway runs non-root, read-only and with no-new-privileges.
