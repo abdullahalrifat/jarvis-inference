@@ -86,9 +86,7 @@ async def embeddings(
         "data": [
             {
                 "object": "embedding",
-                "embedding": _encode_embedding(
-                    vector, payload.encoding_format or "float"
-                ),
+                "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
                 "index": index,
             }
             for index, vector in enumerate(vectors)
@@ -198,9 +196,7 @@ async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str
                     {
                         "index": 0,
                         "delta": delta,
-                        "finish_reason": (
-                            data.get("done_reason") if data.get("done") else None
-                        ),
+                        "finish_reason": (data.get("done_reason") if data.get("done") else None),
                     }
                 ],
             }

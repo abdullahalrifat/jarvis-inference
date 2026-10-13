@@ -177,59 +177,59 @@ class Scheduler:
         acquired = False
         started = time.perf_counter()
         try:
+            warm = await self._prepare(model, chat=False)
+            await self._acquire_slot(model, enqueued, request_id)
+            acquired = True
             try:
-                warm = await self._prepare(model, chat=False)
-                await self._acquire_slot(model, enqueued, request_id)
-                acquired = True
-                try:
-                    admit_request()
-                except InferenceError:
-                    RESOURCE_REJECTIONS.inc()
-                    raise
-                model_manager.activate(model, warm)
-                ACTIVE_MODEL.labels(model=model).set(1)
-                try:
-                    vectors = await asyncio.wait_for(
-                        self.backend.embeddings(model, inputs),
-                        timeout=settings.embedding_timeout_seconds,
-                    )
-                    self.circuit.success()
-                    self._record_circuit()
-                    model_manager.record_loaded(model)
-                    REQUESTS.labels(model=model, status="success").inc()
-                    return vectors
-                except InferenceError as exc:
-                    self._backend_failure(exc)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise
-                except TimeoutError as exc:
-                    error = InferenceError(
-                        "EMBEDDING_TIMEOUT",
-                        f"Embedding request timed out after {settings.embedding_timeout_seconds:.1f}s",
-                        True,
-                        504,
-                    )
-                    self._backend_failure(error)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise error from exc
-                except asyncio.CancelledError:
-                    CANCELLED_REQUESTS.labels(kind="embedding").inc()
-                    raise
-                except Exception as exc:
-                    error = InferenceError("INFERENCE_ERROR", str(exc), True, 503)
-                    self._backend_failure(error)
-                    REQUESTS.labels(model=model, status="error").inc()
-                    raise error from exc
-                finally:
-                    ACTIVE_MODEL.labels(model=model).set(0)
+                admit_request()
+            except InferenceError:
+                RESOURCE_REJECTIONS.inc()
+                raise
+            model_manager.activate(model, warm)
+            ACTIVE_MODEL.labels(model=model).set(1)
+            try:
+                vectors = await asyncio.wait_for(
+                    self.backend.embeddings(model, inputs),
+                    timeout=settings.embedding_timeout_seconds,
+                )
+                self.circuit.success()
+                self._record_circuit()
+                model_manager.record_loaded(model)
+                REQUESTS.labels(model=model, status="success").inc()
+                return vectors
+            except InferenceError as exc:
+                self._backend_failure(exc)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise
+            except TimeoutError as exc:
+                error = InferenceError(
+                    "EMBEDDING_TIMEOUT",
+                    f"Embedding request timed out after {settings.embedding_timeout_seconds:.1f}s",
+                    True,
+                    504,
+                )
+                self._backend_failure(error)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise error from exc
+            except asyncio.CancelledError:
+                CANCELLED_REQUESTS.labels(kind="embedding").inc()
+                raise
+            except Exception as exc:
+                error = InferenceError("INFERENCE_ERROR", str(exc), True, 503)
+                self._backend_failure(error)
+                REQUESTS.labels(model=model, status="error").inc()
+                raise error from exc
+            finally:
+                ACTIVE_MODEL.labels(model=model).set(0)
+        except asyncio.CancelledError:
+            CANCELLED_REQUESTS.labels(kind="queued").inc()
+            raise
         finally:
             if acquired:
                 self._release_slot(request_id, model)
             await self._release()
 
-    async def chat(
-        self, payload: dict[str, Any], request_id: str | None = None
-    ) -> dict[str, Any]:
+    async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         request_id = request_id or self._new_request_id()
         self._enqueue()
@@ -258,7 +258,9 @@ class Scheduler:
                     model_manager.record_loaded(model)
                     usage = result.get("usage", {})
                     TOKENS.labels(model=model, kind="prompt").inc(usage.get("prompt_tokens", 0))
-                    TOKENS.labels(model=model, kind="completion").inc(usage.get("completion_tokens", 0))
+                    TOKENS.labels(model=model, kind="completion").inc(
+                        usage.get("completion_tokens", 0)
+                    )
                     self._record_inference_metrics(model, result)
                     REQUESTS.labels(model=model, status="success").inc()
                     return result
@@ -340,7 +342,9 @@ class Scheduler:
                                 if completion:
                                     TOKENS.labels(model=model, kind="completion").inc(completion)
                                     if generation:
-                                        TOKENS_PER_SECOND.labels(model=model).observe(completion / generation)
+                                        TOKENS_PER_SECOND.labels(model=model).observe(
+                                            completion / generation
+                                        )
                             yield line
                     self.circuit.success()
                     self._record_circuit()

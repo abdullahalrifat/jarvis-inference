@@ -56,9 +56,7 @@ def test_ollama_normalization() -> None:
             "message": {
                 "role": "assistant",
                 "content": "",
-                "tool_calls": [
-                    {"function": {"name": "weather", "arguments": {"city": "Tokyo"}}}
-                ],
+                "tool_calls": [{"function": {"name": "weather", "arguments": {"city": "Tokyo"}}}],
             },
             "prompt_eval_count": 3,
             "eval_count": 2,
@@ -81,8 +79,5 @@ async def test_backend_close() -> None:
 
 
 def test_ollama_canonicalizes_latest_tag() -> None:
-    assert (
-        OllamaBackend._canonical_model_name("nomic-embed-text:latest")
-        == "nomic-embed-text"
-    )
+    assert OllamaBackend._canonical_model_name("nomic-embed-text:latest") == "nomic-embed-text"
     assert OllamaBackend._canonical_model_name("qwen3:4b") == "qwen3:4b"

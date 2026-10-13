@@ -69,10 +69,7 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_stream_uses_scheduler_lifecycle(scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
-    chunks = [
-        chunk
-        async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})
-    ]
+    chunks = [chunk async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})]
 
     assert chunks
     assert scheduler.status()["queue_depth"] == 0
@@ -125,9 +122,7 @@ async def test_queue_full_returns_retryable_error(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resource_pressure_is_normalized(
-    monkeypatch, scheduler: Scheduler
-) -> None:
+async def test_resource_pressure_is_normalized(monkeypatch, scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
     monkeypatch.setattr(
         "inference.scheduler.admit_request",
@@ -171,9 +166,7 @@ async def test_cancellation_releases_queue_and_active_slot(
 
 
 @pytest.mark.asyncio
-async def test_embedding_resource_pressure_is_counted(
-    monkeypatch, scheduler: Scheduler
-) -> None:
+async def test_embedding_resource_pressure_is_counted(monkeypatch, scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
     monkeypatch.setattr(
         "inference.scheduler.admit_request",
@@ -238,7 +231,9 @@ async def test_embedding_timeout_is_normalized(monkeypatch, scheduler: Scheduler
 
 
 @pytest.mark.asyncio
-async def test_waiting_request_times_out_without_blocking(scheduler: Scheduler, monkeypatch) -> None:
+async def test_waiting_request_times_out_without_blocking(
+    scheduler: Scheduler, monkeypatch
+) -> None:
     class BlockingBackend(FakeBackend):
         async def chat(self, model: str, payload: dict) -> dict:
             await asyncio.sleep(1)
