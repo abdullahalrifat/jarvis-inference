@@ -23,7 +23,7 @@ def test_settings_enforce_safe_minimums(monkeypatch) -> None:
     monkeypatch.setenv("MAX_LOADED_MODELS", "0")
     monkeypatch.setenv("MEMORY_BUDGET_GB", "0.1")
     monkeypatch.setenv("MEMORY_HEADROOM_GB", "0.1")
-    monkeypatch.setenv("REQUEST_TIMEOUT_SECONDS", "0.1")
+    monkeypatch.setenv("BACKEND_HTTP_TIMEOUT_SECONDS", "0.1")
     monkeypatch.setenv("SHUTDOWN_TIMEOUT_SECONDS", "0.1")
 
     settings = Settings()
@@ -33,5 +33,5 @@ def test_settings_enforce_safe_minimums(monkeypatch) -> None:
     assert settings.max_loaded_models == 1
     assert settings.memory_budget_gb == 0.5
     assert settings.memory_headroom_gb == 1.0
-    assert settings.request_timeout_seconds == 1
+    assert settings.backend_http_timeout_seconds == 1
     assert settings.shutdown_timeout_seconds == 1

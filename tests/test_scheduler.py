@@ -69,7 +69,8 @@ async def test_chat_success_records_result(scheduler: Scheduler) -> None:
 @pytest.mark.asyncio
 async def test_stream_uses_scheduler_lifecycle(scheduler: Scheduler) -> None:
     scheduler._ollama = FakeBackend()
-    chunks = [chunk async for chunk in scheduler.stream({"model": "qwen3:1.7b", "messages": []})]
+    stream = await scheduler.stream({"model": "qwen3:1.7b", "messages": []})
+    chunks = [chunk async for chunk in stream]
 
     assert chunks
     assert scheduler.status()["queue_depth"] == 0
@@ -157,6 +158,8 @@ async def test_cancellation_releases_queue_and_active_slot(
     scheduler._ollama = BlockingBackend()
     task = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
     await asyncio.sleep(0.01)
+    assert scheduler.status()["queue_depth"] == 0
+    assert len(scheduler.status()["active_requests"]) == 1
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
@@ -250,9 +253,135 @@ async def test_waiting_request_times_out_without_blocking(
         await second
 
     assert exc.value.code == "QUEUE_TIMEOUT"
-    assert scheduler.status()["queue_depth"] == 1
+    assert scheduler.status()["queue_depth"] == 0
     first.cancel()
     with pytest.raises(asyncio.CancelledError):
         await first
     assert scheduler.status()["queue_depth"] == 0
     assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_model_preparation_waits_until_slot_is_acquired(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    scheduler._ollama = FakeBackend()
+    monkeypatch.setattr("inference.scheduler.settings.queue_timeout_seconds", 0.01)
+    entered_prepare = asyncio.Event()
+    allow_prepare = asyncio.Event()
+    prepare_calls = 0
+
+    async def blocked_prepare(model: str, *, chat: bool = True) -> bool:
+        nonlocal prepare_calls
+        prepare_calls += 1
+        entered_prepare.set()
+        await allow_prepare.wait()
+        return True
+
+    monkeypatch.setattr(scheduler, "_prepare", blocked_prepare)
+    first = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
+    await entered_prepare.wait()
+    second = asyncio.create_task(scheduler.chat({"model": "qwen3:1.7b", "messages": []}))
+
+    with pytest.raises(InferenceError) as caught:
+        await second
+
+    assert caught.value.code == "QUEUE_TIMEOUT"
+    assert prepare_calls == 1
+    allow_prepare.set()
+    await first
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_model_preparation_failure_releases_slot_and_queue(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    async def fail_prepare(model: str, *, chat: bool = True) -> bool:
+        raise InferenceError("BACKEND_UNAVAILABLE", "backend unavailable", True, 503)
+
+    monkeypatch.setattr(scheduler, "_prepare", fail_prepare)
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.chat({"model": "qwen3:1.7b", "messages": []})
+
+    assert caught.value.code == "BACKEND_UNAVAILABLE"
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+    assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_stream_preparation_failure_releases_slot_and_queue(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    async def fail_prepare(model: str, *, chat: bool = True) -> bool:
+        raise InferenceError("BACKEND_UNAVAILABLE", "backend unavailable", True, 503)
+
+    monkeypatch.setattr(scheduler, "_prepare", fail_prepare)
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.prepare_stream({"model": "qwen3:1.7b", "messages": []})
+
+    assert caught.value.code == "BACKEND_UNAVAILABLE"
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+    assert scheduler.status()["active_requests"] == []
+
+
+@pytest.mark.asyncio
+async def test_embedding_batch_limit_rejects_before_queueing(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    monkeypatch.setattr("inference.scheduler.settings.max_embedding_batch_size", 2)
+
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.embeddings("nomic-embed-text", ["one", "two", "three"])
+
+    assert caught.value.code == "EMBEDDING_BATCH_TOO_LARGE"
+    assert caught.value.status_code == 400
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_context_override_cannot_exceed_configured_limit(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    monkeypatch.setattr("inference.scheduler.settings.max_context_length", 8192)
+
+    with pytest.raises(InferenceError) as caught:
+        await scheduler.chat({"model": "qwen3:1.7b", "messages": [], "num_ctx": 16384})
+
+    assert caught.value.code == "CONTEXT_LIMIT_EXCEEDED"
+    assert caught.value.status_code == 400
+    assert scheduler.status()["queue_depth"] == 0
+    assert scheduler.status()["available_slots"] == 1
+
+
+@pytest.mark.asyncio
+async def test_queue_timeout_is_included_in_wait_latency_metrics(
+    scheduler: Scheduler, monkeypatch
+) -> None:
+    observed = []
+
+    class HistogramChild:
+        def observe(self, value: float) -> None:
+            observed.append(value)
+
+    class Histogram:
+        def labels(self, **_labels):
+            return HistogramChild()
+
+    monkeypatch.setattr("inference.scheduler.QUEUE_WAIT", Histogram())
+    monkeypatch.setattr("inference.scheduler.settings.queue_timeout_seconds", 0.001)
+    await scheduler._semaphore.acquire()
+
+    try:
+        with pytest.raises(InferenceError) as caught:
+            await scheduler._acquire_slot("qwen3:1.7b", 0.0, "queue-timeout-test")
+    finally:
+        scheduler._semaphore.release()
+
+    assert caught.value.code == "QUEUE_TIMEOUT"
+    assert len(observed) == 1
+    assert observed[0] > 0

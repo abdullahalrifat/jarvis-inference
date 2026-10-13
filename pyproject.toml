@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-inference"
-version = "0.3.0"
+version = "0.3.3"
 description = "Production-grade local inference gateway for the Jarvis stack"
 requires-python = ">=3.11"
 dependencies = [
@@ -18,9 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8,<9",
-  "pytest-asyncio>=0.24,<1",
-  "pytest-cov>=5,<7",
+  "pytest>=8,<10",
+  "pytest-asyncio>=0.24,<2",
+  "pytest-cov>=5,<8",
   "ruff>=0.16,<1",
   "build>=1.2,<2",
 ]

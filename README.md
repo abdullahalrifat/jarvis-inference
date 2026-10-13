@@ -1,30 +1,54 @@
 # jarvis-inference
 
+Current release candidate: **0.3.3** (authentication fail-closed and timeout replay protection). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 Production-grade CPU inference gateway for the Jarvis stack.
+
+## Queueing and CPU-only operation
+
+The gateway intentionally runs one generation at a time on small CPU-only hosts. A bounded waiting queue prevents unbounded work accumulation; `QUEUE_TIMEOUT_SECONDS` controls how long a request waits for a slot (default: 90 seconds), while `MAX_QUEUE_SIZE` bounds waiting requests separately from the active inference slot. Queue-depth telemetry counts waiting requests, not the active generation. Queue timeout and queue-full responses are explicit pre-generation rejections and include `Retry-After` guidance. Clients must not retry ambiguous generation/read timeouts because the backend may already have executed the request.
+
+Backend model-state refreshes occur only after a request owns the inference slot, avoiding redundant concurrent refresh work while another generation is active. Increasing the queue deadline improves tolerance to normal long generations; it does not increase throughput.
+
+## Embedding efficiency
+
+Embedding requests are sent to Ollama as a batch rather than one HTTP request per text. Response order is preserved, incomplete batches fail explicitly, and an empty batch performs no backend request. Batching reduces request overhead; it does not claim to eliminate embedding compute.
 
 ## Architecture
 
-    Jarvis / AI Stack
-            |
-            v
-    jarvis-inference
-            |
-            v
-         Ollama
+```text
+Jarvis CLI (local agent)           AI Stack (optional remote control plane)
+          |                                      |
+          +------------------+-------------------+
+                             v
+                     jarvis-inference
+                    OpenAI-compatible API
+                             |
+                           Ollama
+```
 
-The dedicated inference VM owns model execution. AI Stack and Jarvis do not run Ollama or LiteLLM.
+The dedicated inference VM owns model execution. Jarvis and AI Stack are independent sibling consumers of the gateway; neither consumer runs Ollama or LiteLLM. Jarvis local execution must remain usable when AI Stack is stopped. The gateway owns the model allowlist, bounded queue, concurrency, backend timeouts and resource limits.
 
-## Production profile
+## Production and constrained-host profiles
 
-Recommended CPU-only VM:
+Recommended CPU-only VM for comfortable headroom:
 
 - 4 vCPU
 - 10-12 GiB RAM
-- Ollama: 2.75 CPU / 9 GiB RAM
-- Gateway: 0.50 CPU / 512 MiB RAM
+- Ollama: up to 2.75 CPU / 9 GiB RAM
+- Gateway: up to 0.50 CPU / 512 MiB RAM
+
+Constrained 2-vCPU / 10-GiB hosts (such as a small homelab VM) should retain the lower defaults in `.env.example`: Ollama 1.5 CPU / 8 GiB and gateway 0.4 CPU / 1 GiB. Do not copy the larger production CPU limits onto a 2-vCPU VM without benchmarking and host-headroom checks.
+
+The default `MAX_LOADED_MODELS=1` is intentionally conservative. Compose now honors this setting for Ollama as well as the gateway's model manager. A two-model setting may reduce cold reloads when alternating between `qwen3:1.7b` and `nomic-embed-text`, but benchmark it on the actual VM first; do not increase it blindly because `qwen3:4b` and context memory also compete for the 8-GiB Ollama limit.
+
+For CPU-only deployments, `MAX_CONTEXT_LENGTH` defaults to 8192 and request-level `num_ctx` overrides above that cap are rejected before queue admission. `MAX_EMBEDDING_BATCH_SIZE` defaults to 64 inputs per request to bound memory and latency; split larger ingestion jobs into smaller batches. Raise either limit only after measuring peak RAM and throughput on the target VM.
+
+Both profiles preserve:
+
 - One active generation
 - One loaded model
-- Queue size 8
+- Queue size 8 waiting requests (active generation is separate)
 - Context length 8192
 - Ollama keep-alive 30 minutes
 
@@ -60,7 +84,7 @@ cd jarvis-inference
 cp .env.example .env
 ```
 
-For a dedicated inference VM serving another machine, set:
+For a dedicated inference VM serving either standalone Jarvis or AI Stack, set:
 
 ```env
 INFERENCE_BIND_ADDRESS=0.0.0.0
@@ -113,6 +137,7 @@ Verify:
 docker compose ps
 curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/ready
+curl -sS -H "Authorization: Bearer $INFERENCE_API_KEY" http://127.0.0.1:8080/v1/capabilities
 ```
 
 From a remote Jarvis/AI Stack VM:

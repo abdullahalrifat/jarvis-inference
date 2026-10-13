@@ -20,7 +20,13 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
 class Settings:
     host: str = field(default_factory=lambda: os.getenv("INFERENCE_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: _int("INFERENCE_PORT", 8080))
-    api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", ""))
+    api_key: str = field(default_factory=lambda: os.getenv("INFERENCE_API_KEY", "").strip())
+    allow_insecure_no_auth: bool = field(
+        default_factory=lambda: (
+            os.getenv("INFERENCE_ALLOW_INSECURE_NO_AUTH", "false").strip().lower()
+            in {"1", "true", "yes"}
+        )
+    )
     max_concurrent_requests: int = field(
         default_factory=lambda: max(1, _int("MAX_CONCURRENT_REQUESTS", 1))
     )
@@ -32,8 +38,14 @@ class Settings:
     memory_headroom_gb: float = field(
         default_factory=lambda: max(1.0, _float("MEMORY_HEADROOM_GB", 1.0))
     )
-    request_timeout_seconds: float = field(
-        default_factory=lambda: max(1.0, _float("REQUEST_TIMEOUT_SECONDS", 600.0))
+    backend_http_timeout_seconds: float = field(
+        default_factory=lambda: max(
+            1.0,
+            _float(
+                "BACKEND_HTTP_TIMEOUT_SECONDS",
+                float(os.getenv("REQUEST_TIMEOUT_SECONDS", "600")),
+            ),
+        )
     )
     chat_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("CHAT_TIMEOUT_SECONDS", 300.0))
@@ -45,7 +57,7 @@ class Settings:
         default_factory=lambda: max(1.0, _float("EMBEDDING_TIMEOUT_SECONDS", 30.0))
     )
     queue_timeout_seconds: float = field(
-        default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 15.0))
+        default_factory=lambda: max(0.1, _float("QUEUE_TIMEOUT_SECONDS", 90.0))
     )
     shutdown_timeout_seconds: float = field(
         default_factory=lambda: max(1.0, _float("SHUTDOWN_TIMEOUT_SECONDS", 30.0))
@@ -68,6 +80,17 @@ class Settings:
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
     ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
+    max_context_length: int = field(
+        default_factory=lambda: max(512, _int("MAX_CONTEXT_LENGTH", 8192))
+    )
+    max_embedding_batch_size: int = field(
+        default_factory=lambda: max(1, _int("MAX_EMBEDDING_BATCH_SIZE", 64))
+    )
+
+    @property
+    def request_timeout_seconds(self) -> float:
+        """Backward-compatible alias for the backend transport timeout."""
+        return self.backend_http_timeout_seconds
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -83,3 +106,12 @@ class Settings:
 
 
 settings = Settings()
+
+
+def validate_security_config() -> None:
+    """Fail startup closed unless auth is configured or insecure mode is explicit."""
+    if not settings.api_key and not settings.allow_insecure_no_auth:
+        raise RuntimeError(
+            "INFERENCE_API_KEY is required. For isolated local development only, "
+            "set INFERENCE_ALLOW_INSECURE_NO_AUTH=true explicitly."
+        )

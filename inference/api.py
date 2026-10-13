@@ -10,13 +10,14 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from inference.config import settings
 from inference.errors import InferenceError
 from inference.metrics import render
 from inference.models import model_manager
 from inference.resources import status as resource_status
-from inference.scheduler import scheduler
+from inference.scheduler import StreamLease, scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
@@ -30,7 +31,11 @@ def _encode_embedding(vector: list[float], encoding_format: str) -> list[float] 
 
 
 def _auth(value: str | None) -> None:
-    if settings.api_key and not hmac.compare_digest(value or "", settings.api_key):
+    if not settings.api_key:
+        if settings.allow_insecure_no_auth:
+            return
+        raise HTTPException(503, "Inference API authentication is not configured")
+    if not hmac.compare_digest(value or "", settings.api_key):
         raise HTTPException(401, "Invalid inference API key")
 
 
@@ -66,12 +71,13 @@ async def embeddings(
     payload: EmbeddingRequest,
     request: Request,
     authorization: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> JSONResponse:
     _auth(_bearer(authorization))
+    request_id = _request_id(request)
     model = payload.model or settings.embedding_model
     inputs = [payload.input] if isinstance(payload.input, str) else payload.input
     try:
-        vectors = await scheduler.embeddings(model, inputs, request_id=_request_id(request))
+        vectors = await scheduler.embeddings(model, inputs, request_id=request_id)
     except InferenceError as exc:
         raise HTTPException(
             exc.status_code,
@@ -80,20 +86,28 @@ async def embeddings(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
-    return {
-        "object": "list",
-        "data": [
-            {
-                "object": "embedding",
-                "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
-                "index": index,
-            }
-            for index, vector in enumerate(vectors)
-        ],
-        "model": model,
-        "usage": {"prompt_tokens": 0, "total_tokens": 0},
-    }
+    return JSONResponse(
+        content={
+            "object": "list",
+            "data": [
+                {
+                    "object": "embedding",
+                    "embedding": _encode_embedding(vector, payload.encoding_format or "float"),
+                    "index": index,
+                }
+                for index, vector in enumerate(vectors)
+            ],
+            "model": model,
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        },
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @router.get("/v1/models", response_model=dict)
@@ -102,6 +116,39 @@ async def models(authorization: str | None = Header(default=None)) -> dict[str, 
     return {
         "object": "list",
         "data": [ModelInfo(id=model).model_dump() for model in settings.models],
+    }
+
+
+@router.get("/v1/capabilities", response_model=dict)
+async def capabilities(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Advertise the inference protocol and model capabilities."""
+    _auth(_bearer(authorization))
+    chat_models = list(settings.models)
+    models = []
+    for model in chat_models:
+        models.append({"id": model, "capabilities": ["chat", "streaming"]})
+    models.append({"id": settings.embedding_model, "capabilities": ["embeddings"]})
+    return {
+        "protocol": {"current": 1, "min_client": 1, "max_client": 1},
+        "service": "jarvis-inference",
+        "features": [
+            "chat",
+            "streaming",
+            "embeddings",
+            "model_catalog",
+            "request_ids",
+        ],
+        "models": models,
+        "limits": {
+            "max_concurrent_requests": settings.max_concurrent_requests,
+            "max_queue_size": settings.max_queue_size,
+            "queue_timeout_seconds": settings.queue_timeout_seconds,
+            "chat_timeout_seconds": settings.chat_timeout_seconds,
+            "stream_timeout_seconds": settings.stream_timeout_seconds,
+            "embedding_timeout_seconds": settings.embedding_timeout_seconds,
+        },
     }
 
 
@@ -141,17 +188,38 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     if payload.stream:
+        try:
+            lease = await scheduler.prepare_stream(body, request_id=request_id)
+        except InferenceError as exc:
+            raise HTTPException(
+                exc.status_code,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "retryable": exc.retryable,
+                },
+                headers={
+                    "X-Request-ID": request_id,
+                    **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                    **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+                },
+            ) from exc
         return StreamingResponse(
-            _stream(body, request_id),
+            _stream(body, request_id, lease),
             media_type="text/event-stream",
             headers={
                 "X-Request-ID": request_id,
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
             },
+            background=BackgroundTask(scheduler.release_stream, lease),
         )
     try:
         result = await scheduler.chat(body, request_id=request_id)
@@ -163,7 +231,11 @@ async def chat(
                 "message": exc.message,
                 "retryable": exc.retryable,
             },
-            headers={"X-Request-ID": request_id},
+            headers={
+                "X-Request-ID": request_id,
+                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
+                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
+            },
         ) from exc
     result.pop("_inference", None)
     result.setdefault("id", request_id)
@@ -174,40 +246,60 @@ async def chat(
     return JSONResponse(content=result, headers={"X-Request-ID": request_id})
 
 
-async def _stream(body: dict[str, object], request_id: str) -> AsyncIterator[str]:
+async def _stream(
+    body: dict[str, object], request_id: str, lease: StreamLease
+) -> AsyncIterator[str]:
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
-    async for line in scheduler.stream(body, request_id=request_id):
-        if backend.name == "ollama":
-            data = backend.sse_data(line)
-            message = data.get("message") or {}
-            delta: dict[str, object] = {"content": message.get("content", "")}
-            if message.get("role"):
-                delta["role"] = message["role"]
-            if message.get("tool_calls"):
-                delta["tool_calls"] = message["tool_calls"]
-            chunk = {
-                "id": request_id,
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": delta,
-                        "finish_reason": (data.get("done_reason") if data.get("done") else None),
-                    }
-                ],
-            }
-            if data.get("done") and data.get("eval_count") is not None:
-                chunk["usage"] = {
-                    "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                    "completion_tokens": int(data.get("eval_count") or 0),
-                    "total_tokens": int(data.get("prompt_eval_count") or 0)
-                    + int(data.get("eval_count") or 0),
+    try:
+        stream = await scheduler.stream(body, request_id=request_id, lease=lease)
+        async for line in stream:
+            if backend.name == "ollama":
+                data = backend.sse_data(line)
+                message = data.get("message") or {}
+                delta: dict[str, object] = {"content": message.get("content", "")}
+                if message.get("role"):
+                    delta["role"] = message["role"]
+                if message.get("tool_calls"):
+                    delta["tool_calls"] = message["tool_calls"]
+                chunk = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": (
+                                data.get("done_reason") if data.get("done") else None
+                            ),
+                        }
+                    ],
                 }
-            yield f"data: {json.dumps(chunk)}\n\n"
-        else:
-            yield f"data: {line}\n\n"
+                if data.get("done") and data.get("eval_count") is not None:
+                    chunk["usage"] = {
+                        "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                        "completion_tokens": int(data.get("eval_count") or 0),
+                        "total_tokens": int(data.get("prompt_eval_count") or 0)
+                        + int(data.get("eval_count") or 0),
+                    }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            else:
+                yield f"data: {line}\n\n"
+    except InferenceError as exc:
+        # Once SSE headers are committed, communicate backend failures as an
+        # OpenAI-compatible error event rather than abruptly truncating the stream.
+        error_event = {
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+                "request_id": request_id,
+            }
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
     yield "data: [DONE]\n\n"
