@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+### Features
+
+- First-class reasoning-model support: `/v1/chat/completions` accepts a `think` parameter (`true`/`false`). Qwen3-family models are forced to explicit non-thinking mode by default (`OLLAMA_DEFAULT_THINK`, default `false`) so callers no longer silently burn the token budget on reasoning.
+- Reasoning output is surfaced OpenAI-style as `reasoning_content` in both non-streaming messages and streaming deltas when thinking is enabled, instead of empty content blocks.
+
+### Ops notes
+
+- Optimized CPU profile on modern hosts: measured ~26 tok/s on `qwen3:4b` and ~14 tok/s on `qwen3:8b` with `OLLAMA_NUM_THREADS=8` on an i7-14700; thread counts beyond 8 collapse restartless throughput because decode is memory-bandwidth bound.
+- Model registry now provisioned with `qwen3:8b`; recorded in `models/manifest.yaml`.
+
 ## 0.3.3
 
 ### Reliability

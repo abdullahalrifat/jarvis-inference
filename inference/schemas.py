@@ -28,6 +28,7 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Any = None
     response_format: dict[str, Any] | None = None
     stream: bool = False
+    think: bool | None = None
     keep_alive: str | int | None = None
 
 

@@ -10,6 +10,11 @@ models:
     required: true
     digest: ""
     max_context: 8192
+  - name: qwen3:8b
+    role: reasoning
+    required: true
+    digest: ""
+    max_context: 8192
   - name: nomic-embed-text
     role: embedding
     required: true

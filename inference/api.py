@@ -261,6 +261,8 @@ async def _stream(
                 delta: dict[str, object] = {"content": message.get("content", "")}
                 if message.get("role"):
                     delta["role"] = message["role"]
+                if message.get("thinking"):
+                    delta["reasoning_content"] = message["thinking"]
                 if message.get("tool_calls"):
                     delta["tool_calls"] = message["tool_calls"]
                 chunk = {
