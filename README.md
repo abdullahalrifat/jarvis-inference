@@ -1,6 +1,6 @@
 # jarvis-inference
 
-Current release candidate: **0.3.3** (authentication fail-closed and timeout replay protection). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release candidate: **0.4.0** (reasoning-model support and explicit thinking-mode control). See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Production-grade CPU inference gateway for the Jarvis stack.
 
@@ -54,9 +54,25 @@ Both profiles preserve:
 
 Configured models:
 
-- qwen3:1.7b — default fast model
-- qwen3:4b — reasoning model
+- qwen3:1.7b — fast fallback model
+- qwen3:4b — default model
+- qwen3:8b — reasoning model
 - nomic-embed-text — embeddings
+
+## Reasoning models (Qwen3 `think` control)
+
+Qwen3-family models emit reasoning (`thinking`) by default, which silently consumes
+the completion budget before any answer text. The gateway takes explicit control:
+
+- `POST /v1/chat/completions` accepts `think: true|false`. Omitted requests default
+  to `OLLAMA_DEFAULT_THINK` (default `false`). With thinking disabled, CPU decode
+  throughput drops no tokens on reasoning and answers start immediately.
+- When `think: true` is requested, reasoning is surfaced as `reasoning_content`
+  (OpenAI-style) in non-streaming `choices[0].message` and in streaming deltas;
+  `content` only fills for the post-thinking answer.
+- CPU tune note: set `OLLAMA_NUM_THREADS` to the P-core count (e.g. 8 on an
+  i7-14700). More threads slow decode down because throughput is memory-bandwidth
+  bound. Measured: qwen3:4b ~26 tok/s, qwen3:8b ~14 tok/s at 8 threads.
 
 ## Deployment layout
 

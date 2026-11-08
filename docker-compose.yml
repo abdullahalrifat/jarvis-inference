@@ -9,7 +9,7 @@ services:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
       OLLAMA_MAX_LOADED_MODELS: ${MAX_LOADED_MODELS:-1}
       OLLAMA_NUM_PARALLEL: "1"
-      OLLAMA_CONTEXT_LENGTH: "8192"
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
     volumes:
       - ollama:/root/.ollama
     cpus: ${OLLAMA_CPUS:-1.5}

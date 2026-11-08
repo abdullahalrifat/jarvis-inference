@@ -80,6 +80,14 @@ class Settings:
     )
     llamacpp_url: str = field(default_factory=lambda: os.getenv("LLAMACPP_URL", "").rstrip("/"))
     ollama_keep_alive: str = field(default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "30m"))
+    # Qwen3-family models think by default, which silently consumes the token
+    # budget with reasoning. Default to explicit non-thinking unless a request
+    # (or this env var) opts in.
+    ollama_think_default: bool = field(
+        default_factory=lambda: (
+            os.getenv("OLLAMA_DEFAULT_THINK", "false").strip().lower() in {"1", "true", "yes"}
+        )
+    )
     max_context_length: int = field(
         default_factory=lambda: max(512, _int("MAX_CONTEXT_LENGTH", 8192))
     )

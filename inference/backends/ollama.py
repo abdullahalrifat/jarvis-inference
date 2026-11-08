@@ -163,6 +163,8 @@ class OllamaBackend:
             "keep_alive": payload.get("keep_alive") or settings.ollama_keep_alive,
             "options": options,
         }
+        think = payload.get("think")
+        body["think"] = bool(think) if think is not None else settings.ollama_think_default
         if payload.get("stop") is not None:
             options["stop"] = payload["stop"]
         if payload.get("tools") is not None:
@@ -186,6 +188,8 @@ class OllamaBackend:
             "role": message.get("role", "assistant"),
             "content": message.get("content", ""),
         }
+        if message.get("thinking"):
+            normalized_message["reasoning_content"] = message["thinking"]
         if message.get("tool_calls"):
             normalized_message["tool_calls"] = message["tool_calls"]
         inference = {
