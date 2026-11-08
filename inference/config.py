@@ -85,8 +85,7 @@ class Settings:
     # (or this env var) opts in.
     ollama_think_default: bool = field(
         default_factory=lambda: (
-            os.getenv("OLLAMA_DEFAULT_THINK", "false").strip().lower()
-            in {"1", "true", "yes"}
+            os.getenv("OLLAMA_DEFAULT_THINK", "false").strip().lower() in {"1", "true", "yes"}
         )
     )
     max_context_length: int = field(
