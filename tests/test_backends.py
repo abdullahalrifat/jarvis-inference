@@ -81,3 +81,25 @@ async def test_backend_close() -> None:
 def test_ollama_canonicalizes_latest_tag() -> None:
     assert OllamaBackend._canonical_model_name("nomic-embed-text:latest") == "nomic-embed-text"
     assert OllamaBackend._canonical_model_name("qwen3:4b") == "qwen3:4b"
+
+
+def test_ollama_forwards_keep_alive_zero_immediately() -> None:
+    """GW-19: keep_alive=0 means unload now; it must not fall back to 30m."""
+    body = OllamaBackend._body("qwen3:4b", {"messages": [], "keep_alive": 0}, False)
+    assert body["keep_alive"] == 0
+
+
+def test_ollama_omits_think_for_non_thinking_models() -> None:
+    """GW-10: Ollama rejects `think` for non-thinking model families."""
+    body = OllamaBackend._body("llama3.2:3b", {"messages": [], "think": True}, False)
+    assert "think" not in body
+
+
+def test_ollama_sends_think_for_thinking_models() -> None:
+    body = OllamaBackend._body("qwen3:8b", {"messages": [], "think": True}, False)
+    assert body["think"] is True
+
+
+def test_ollama_think_defaults_apply_for_thinking_models() -> None:
+    body = OllamaBackend._body("qwen3:4b", {"messages": []}, False)
+    assert body["think"] is False

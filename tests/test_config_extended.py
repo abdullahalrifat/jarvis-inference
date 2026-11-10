@@ -29,7 +29,8 @@ def test_settings_enforce_safe_minimums(monkeypatch) -> None:
     settings = Settings()
 
     assert settings.max_concurrent_requests == 1
-    assert settings.max_queue_size == 0
+    # maxsize=0 means unbounded for asyncio.Queue; the safe minimum is 1.
+    assert settings.max_queue_size == 1
     assert settings.max_loaded_models == 1
     assert settings.memory_budget_gb == 0.5
     assert settings.memory_headroom_gb == 1.0

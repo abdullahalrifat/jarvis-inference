@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 
 from fastapi import FastAPI
 
@@ -20,5 +22,13 @@ async def lifespan(_: FastAPI):
         pass
 
 
-app = FastAPI(title="Jarvis Inference", version="0.3.3", lifespan=lifespan)
+def _app_version() -> str:
+    """Track the installed package version instead of a hardcoded drift (GW-9)."""
+    try:
+        return package_version("jarvis-inference")
+    except PackageNotFoundError:
+        return "0.0.0.dev0"
+
+
+app = FastAPI(title="Jarvis Inference", version=_app_version(), lifespan=lifespan)
 app.include_router(router)

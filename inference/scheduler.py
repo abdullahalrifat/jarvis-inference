@@ -119,7 +119,13 @@ class Scheduler:
             "started_monotonic": time.perf_counter(),
         }
         ACTIVE_REQUESTS.inc()
-        ACTIVE_REQUEST_AGE.set(0)
+        # Recompute the oldest-active gauge across ALL active entries instead
+        # of stomping it to zero on every admission (GW-20).
+        if self._active:
+            oldest = min(entry["started_monotonic"] for entry in self._active.values())
+            ACTIVE_REQUEST_AGE.set(max(0.0, time.perf_counter() - oldest))
+        else:
+            ACTIVE_REQUEST_AGE.set(0)
 
     def _release_slot(self, request_id: str, model: str) -> None:
         self._active.pop(request_id, None)
@@ -416,6 +422,7 @@ class Scheduler:
         first_token: float | None = None
         try:
             started = time.perf_counter()
+            saw_done = False
             try:
                 async with asyncio.timeout(settings.stream_timeout_seconds):
                     async for line in self.backend.stream(model, payload):
@@ -428,6 +435,7 @@ class Scheduler:
                         except (TypeError, ValueError):
                             event = {}
                         if event.get("done"):
+                            saw_done = True
                             load = float(event.get("load_duration") or 0) / 1e9
                             generation = float(event.get("eval_duration") or 0) / 1e9
                             completion = int(event.get("eval_count") or 0)
@@ -442,6 +450,15 @@ class Scheduler:
                                         completion / generation
                                     )
                         yield line
+                if not saw_done:
+                    # A backend stream that ends without its terminal event is
+                    # an incomplete generation, not a success (GW-20).
+                    raise InferenceError(
+                        "STREAM_INCOMPLETE",
+                        "backend stream ended without a done event",
+                        True,
+                        502,
+                    )
                 self.circuit.success()
                 self._record_circuit()
                 model_manager.record_loaded(model)

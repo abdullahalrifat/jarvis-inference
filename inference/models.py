@@ -13,6 +13,18 @@ from .errors import InferenceError
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
+    thinking: bool = False
+
+
+# Model families that accept Ollama's `think` parameter. Sending `think` to a
+# non-thinking model makes every request fail with a backend 400 (GW-10).
+THINKING_MODEL_FAMILIES = frozenset({"qwen3", "deepseek-r1", "gpt-oss"})
+
+
+def supports_thinking(model: str) -> bool:
+    """Whether the model family accepts an explicit `think` flag."""
+    family = model.split(":", 1)[0].strip().lower()
+    return family in THINKING_MODEL_FAMILIES
 
 
 class ModelManager:
@@ -36,7 +48,7 @@ class ModelManager:
                 False,
                 400,
             )
-        return ModelSpec(model)
+        return ModelSpec(model, thinking=supports_thinking(model))
 
     def validate_chat(self, model: str) -> ModelSpec:
         if model not in settings.models:
@@ -46,7 +58,7 @@ class ModelManager:
                 False,
                 400,
             )
-        return ModelSpec(model)
+        return ModelSpec(model, thinking=supports_thinking(model))
 
     async def refresh(self, backend: Any, force: bool = False) -> bool:
         async with self._refresh_lock:

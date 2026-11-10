@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from inference.errors import InferenceError
@@ -6,9 +8,13 @@ from inference.scheduler import StreamLease, scheduler
 
 
 def test_openapi_reports_package_version() -> None:
+    from importlib.metadata import version
+
     response = TestClient(app).get("/openapi.json")
     assert response.status_code == 200
-    assert response.json()["info"]["version"] == "0.3.3"
+    # The gateway must report the installed package version, never a
+    # hardcoded constant that drifts from pyproject.toml (GW-9).
+    assert response.json()["info"]["version"] == version("jarvis-inference")
 
 
 def test_health() -> None:
@@ -23,7 +29,7 @@ def test_unknown_model() -> None:
         json={"model": "not-a-model", "messages": [{"role": "user", "content": "hi"}]},
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
+    assert response.json()["error"]["code"] == "UNKNOWN_MODEL"
 
 
 def test_models() -> None:
@@ -127,7 +133,7 @@ def test_embedding_model_is_rejected_for_chat() -> None:
         },
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
+    assert response.json()["error"]["code"] == "UNKNOWN_MODEL"
 
 
 def test_invalid_stream_model_is_rejected_before_streaming() -> None:
@@ -140,7 +146,7 @@ def test_invalid_stream_model_is_rejected_before_streaming() -> None:
         },
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "UNKNOWN_MODEL"
+    assert response.json()["error"]["code"] == "UNKNOWN_MODEL"
 
 
 def test_embeddings_support_base64_encoding(monkeypatch) -> None:
@@ -175,7 +181,7 @@ def test_queue_timeout_returns_retry_after(monkeypatch) -> None:
 
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "5"
-    assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
+    assert response.json()["error"]["code"] == "QUEUE_TIMEOUT"
 
 
 def test_stream_queue_timeout_returns_retry_after(monkeypatch) -> None:
@@ -194,7 +200,7 @@ def test_stream_queue_timeout_returns_retry_after(monkeypatch) -> None:
 
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "5"
-    assert response.json()["detail"]["code"] == "QUEUE_TIMEOUT"
+    assert response.json()["error"]["code"] == "QUEUE_TIMEOUT"
 
 
 def test_stream_backend_error_is_emitted_as_sse_event(monkeypatch) -> None:
@@ -227,3 +233,169 @@ def test_stream_backend_error_is_emitted_as_sse_event(monkeypatch) -> None:
     assert response.status_code == 200
     assert '"code": "MODEL_TIMEOUT"' in response.text
     assert "data: [DONE]" in response.text
+
+
+def test_unsupported_parameters_are_rejected() -> None:
+    """GW-11: tolerated-but-unimplemented params must 400, not silently drop."""
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "logprobs": True,
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "UNSUPPORTED_PARAMETER"
+    assert "logprobs" in error["message"]
+    assert "n" in error["message"]
+
+
+def _prepare_stream_stub(monkeypatch, events: list[str]) -> StreamLease:
+    lease = StreamLease(model="qwen3:1.7b", request_id="stream-request")
+
+    async def prepared_stream(payload: dict, request_id: str | None = None) -> StreamLease:
+        return lease
+
+    async def fake_stream(payload: dict, request_id: str | None = None, *, lease=None):
+        async def _events():
+            for event in events:
+                yield event
+
+        return _events()
+
+    monkeypatch.setattr(scheduler, "prepare_stream", prepared_stream)
+    monkeypatch.setattr(scheduler, "stream", fake_stream)
+    monkeypatch.setattr(scheduler, "release_stream", lambda _lease: None)
+    return lease
+
+
+_DONE_EVENT = {
+    "message": {"role": "assistant", "content": ""},
+    "done": True,
+    "done_reason": "stop",
+    "eval_count": 5,
+    "prompt_eval_count": 7,
+}
+
+
+def test_stream_skips_malformed_backend_lines(monkeypatch) -> None:
+    """GW-4a: one malformed backend line must not abort a healthy stream."""
+    events = [
+        '{"message": {"role": "assistant", "content": "hel"}, "done": false}',
+        "not-json-at-all",
+        '{"message": {"role": "assistant", "content": "lo"}, "done": false}',
+        json.dumps(_DONE_EVENT),
+    ]
+    _prepare_stream_stub(monkeypatch, events)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and not line.endswith("[DONE]")
+    ]
+    contents = [chunk["choices"][0]["delta"]["content"] for chunk in chunks]
+    assert "hel" in contents
+    assert "lo" in contents
+    finals = [
+        chunk["choices"][0]["finish_reason"]
+        for chunk in chunks
+        if chunk["choices"][0]["finish_reason"]
+    ]
+    assert finals == ["stop"]
+
+
+def test_stream_maps_tool_calls_finish_reason(monkeypatch) -> None:
+    done = dict(_DONE_EVENT)
+    done["done_reason"] = "stop"
+    done["message"] = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{"function": {"name": "weather", "arguments": "{}"}}],
+    }
+    _prepare_stream_stub(monkeypatch, [json.dumps(done)])
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and not line.endswith("[DONE]")
+    ]
+    finals = [
+        chunk["choices"][0]["finish_reason"]
+        for chunk in chunks
+        if chunk["choices"][0]["finish_reason"]
+    ]
+    assert finals == ["tool_calls"]
+
+
+def test_stream_include_usage_emits_usage_only_chunk(monkeypatch) -> None:
+    """GW-4a: include_usage ships usage in a final empty-choices chunk."""
+    _prepare_stream_stub(monkeypatch, [json.dumps(_DONE_EVENT)])
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and not line.endswith("[DONE]")
+    ]
+    content_chunks = [chunk for chunk in chunks if chunk["choices"]]
+    usage_chunks = [chunk for chunk in chunks if not chunk["choices"]]
+    assert len(content_chunks) == 1
+    assert "usage" not in content_chunks[0]
+    assert len(usage_chunks) == 1
+    assert usage_chunks[0]["usage"]["prompt_tokens"] == 7
+    assert usage_chunks[0]["usage"]["total_tokens"] == 12
+
+
+def test_stream_defaults_keep_inline_usage_chunk(monkeypatch) -> None:
+    """Without include_usage the tracked usage chunk behavior is unchanged."""
+    _prepare_stream_stub(monkeypatch, [json.dumps(_DONE_EVENT)])
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    chunks = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and not line.endswith("[DONE]")
+    ]
+    final_chunk = chunks[-1]
+    assert final_chunk["choices"][0]["finish_reason"] == "stop"
+    assert final_chunk["usage"]["total_tokens"] == 12

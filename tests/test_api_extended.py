@@ -97,7 +97,7 @@ def test_backend_error_is_returned_as_openai_error(monkeypatch) -> None:
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "BACKEND_ERROR"
+    assert response.json()["error"]["code"] == "BACKEND_ERROR"
 
 
 def test_models_endpoint_contains_concrete_ids() -> None:

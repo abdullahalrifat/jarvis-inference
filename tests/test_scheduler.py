@@ -385,3 +385,55 @@ async def test_queue_timeout_is_included_in_wait_latency_metrics(
     assert caught.value.code == "QUEUE_TIMEOUT"
     assert len(observed) == 1
     assert observed[0] > 0
+
+
+class IncompleteStreamBackend(FakeBackend):
+    async def stream(self, model: str, payload: dict):
+        yield '{"message":{"role":"assistant","content":"partial"},"done":false}'
+        yield '{"message":{"role":"assistant","content":"more"},"done":false}'
+
+
+@pytest.mark.asyncio
+async def test_stream_without_done_event_is_a_failure(scheduler: Scheduler) -> None:
+    """GW-20: a backend stream ending without `done` is an incomplete generation."""
+    scheduler._ollama = IncompleteStreamBackend()
+
+    stream = await scheduler.stream({"model": "qwen3:1.7b", "messages": []})
+
+    chunks = []
+    with pytest.raises(InferenceError) as exc:
+        async for chunk in stream:
+            chunks.append(chunk)
+            # Nothing after the partial content; the terminal event is missing.
+
+    assert exc.value.code == "STREAM_INCOMPLETE"
+    assert len(chunks) == 2
+
+
+@pytest.mark.asyncio
+async def test_active_request_age_tracks_oldest_entry(scheduler: Scheduler, monkeypatch) -> None:
+    """GW-20: admitting a newer request must not stomp the oldest-age gauge."""
+    from inference.metrics import ACTIVE_REQUEST_AGE
+    from inference.scheduler import InferenceError  # noqa: F401
+
+    scheduler._semaphore = asyncio.Semaphore(2)
+    scheduler._queue = asyncio.Queue(maxsize=4)
+    model_manager._available.add("qwen3:1.7b")
+    model_manager._loaded.add("qwen3:1.7b")
+
+    clock = {"value": 0.0}
+
+    def fake_perf_counter() -> float:
+        return clock["value"]
+
+    monkeypatch.setattr("inference.scheduler.time.perf_counter", fake_perf_counter)
+    clock["value"] = 9.0
+    await scheduler._acquire_slot("qwen3:1.7b", 8.5, "req-old")
+    # At admission the request itself is brand new, so the gauge is ~0.
+
+    clock["value"] = 11.0
+    await scheduler._acquire_slot("qwen3:1.7b", 10.5, "req-new")
+    reading = ACTIVE_REQUEST_AGE._value.get()
+    # Two seconds elapsed since req-old started: the gauge must still be
+    # driven by the OLD request, not stomped to 0 by the new admission.
+    assert abs(reading - 2.0) < 1e-6
