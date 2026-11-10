@@ -16,6 +16,9 @@ USER appuser
 
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)"
 
-CMD ["uvicorn", "inference.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--access-log", "--timeout-keep-alive", "30"]
+# The graceful-shutdown window (25s) must stay under the compose
+# stop_grace_period (30s) so in-flight generations get an error event
+# instead of being killed mid-stream (GW-3).
+CMD ["uvicorn", "inference.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--access-log", "--timeout-keep-alive", "30", "--timeout-graceful-shutdown", "25"]

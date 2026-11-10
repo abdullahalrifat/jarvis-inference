@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+import logging
 import struct
 import time
 import uuid
@@ -21,6 +22,52 @@ from inference.scheduler import StreamLease, scheduler
 from inference.schemas import ChatCompletionRequest, EmbeddingRequest, ModelInfo
 
 router = APIRouter()
+
+logger = logging.getLogger("jarvis.api")
+
+# Parameters tolerated by the request schema (extra="allow") but not
+# implemented by this gateway. They are rejected with an explicit
+# OpenAI-compatible 400 instead of being silently dropped (GW-11).
+UNSUPPORTED_CHAT_PARAMS = frozenset(
+    {
+        "n",
+        "logprobs",
+        "top_logprobs",
+        "logit_bias",
+        "presence_penalty",
+        "frequency_penalty",
+    }
+)
+
+
+def _error_headers(request_id: str, exc: InferenceError | None = None) -> dict[str, str]:
+    headers = {"X-Request-ID": request_id}
+    if exc is not None:
+        if exc.code == "QUEUE_TIMEOUT":
+            headers["Retry-After"] = "5"
+        elif exc.code == "QUEUE_FULL":
+            headers["Retry-After"] = "2"
+    return headers
+
+
+def _error_response(exc: InferenceError, request_id: str) -> JSONResponse:
+    """OpenAI-compatible `{"error": {...}}` envelope (GW-7).
+
+    FastAPI's default `{"detail": ...}` envelope breaks OpenAI-SDK error
+    handling, so InferenceError paths return this shape directly.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+                "request_id": request_id,
+            }
+        },
+        headers=_error_headers(request_id, exc),
+    )
 
 
 def _encode_embedding(vector: list[float], encoding_format: str) -> list[float] | str:
@@ -79,19 +126,7 @@ async def embeddings(
     try:
         vectors = await scheduler.embeddings(model, inputs, request_id=request_id)
     except InferenceError as exc:
-        raise HTTPException(
-            exc.status_code,
-            detail={
-                "code": exc.code,
-                "message": exc.message,
-                "retryable": exc.retryable,
-            },
-            headers={
-                "X-Request-ID": request_id,
-                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
-                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
-            },
-        ) from exc
+        return _error_response(exc, request_id)
     return JSONResponse(
         content={
             "object": "list",
@@ -181,36 +216,30 @@ async def chat(
     try:
         model_manager.validate_chat(str(body["model"]))
     except InferenceError as exc:
-        raise HTTPException(
-            exc.status_code,
-            detail={
-                "code": exc.code,
-                "message": exc.message,
-                "retryable": exc.retryable,
+        return _error_response(exc, request_id)
+    # Honest rejection for tolerated-but-unimplemented parameters (GW-11):
+    # silently dropping them makes clients believe their settings took effect.
+    unsupported = sorted(set(body).intersection(UNSUPPORTED_CHAT_PARAMS))
+    if unsupported:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "UNSUPPORTED_PARAMETER",
+                    "message": (
+                        "parameters not supported by this gateway: " + ", ".join(unsupported)
+                    ),
+                    "retryable": False,
+                    "request_id": request_id,
+                }
             },
-            headers={
-                "X-Request-ID": request_id,
-                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
-                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
-            },
-        ) from exc
+            headers=_error_headers(request_id),
+        )
     if payload.stream:
         try:
             lease = await scheduler.prepare_stream(body, request_id=request_id)
         except InferenceError as exc:
-            raise HTTPException(
-                exc.status_code,
-                detail={
-                    "code": exc.code,
-                    "message": exc.message,
-                    "retryable": exc.retryable,
-                },
-                headers={
-                    "X-Request-ID": request_id,
-                    **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
-                    **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
-                },
-            ) from exc
+            return _error_response(exc, request_id)
         return StreamingResponse(
             _stream(body, request_id, lease),
             media_type="text/event-stream",
@@ -224,19 +253,7 @@ async def chat(
     try:
         result = await scheduler.chat(body, request_id=request_id)
     except InferenceError as exc:
-        raise HTTPException(
-            exc.status_code,
-            detail={
-                "code": exc.code,
-                "message": exc.message,
-                "retryable": exc.retryable,
-            },
-            headers={
-                "X-Request-ID": request_id,
-                **({"Retry-After": "5"} if exc.code == "QUEUE_TIMEOUT" else {}),
-                **({"Retry-After": "2"} if exc.code == "QUEUE_FULL" else {}),
-            },
-        ) from exc
+        return _error_response(exc, request_id)
     result.pop("_inference", None)
     result.setdefault("id", request_id)
     result.setdefault("created", int(time.time()))
@@ -252,11 +269,26 @@ async def _stream(
     model = str(body["model"])
     model_manager.validate_chat(model)
     backend = scheduler.backend
+    # OpenAI streaming semantics (GW-4a): when the client asks for usage via
+    # stream_options.include_usage, the usage object ships in a final
+    # usage-only chunk with empty choices — not inside the content chunk.
+    stream_options = body.get("stream_options")
+    include_usage = bool(isinstance(stream_options, dict) and stream_options.get("include_usage"))
     try:
         stream = await scheduler.stream(body, request_id=request_id, lease=lease)
         async for line in stream:
             if backend.name == "ollama":
-                data = backend.sse_data(line)
+                try:
+                    data = backend.sse_data(line)
+                except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                    # A malformed backend line must not abort an otherwise
+                    # healthy stream; skip it and keep reading (GW-4a).
+                    logger.warning(
+                        "skipping malformed backend SSE line (request %s): %s",
+                        request_id,
+                        exc,
+                    )
+                    continue
                 message = data.get("message") or {}
                 delta: dict[str, object] = {"content": message.get("content", "")}
                 if message.get("role"):
@@ -265,6 +297,23 @@ async def _stream(
                     delta["reasoning_content"] = message["thinking"]
                 if message.get("tool_calls"):
                     delta["tool_calls"] = message["tool_calls"]
+                finish_reason: str | None = None
+                usage = None
+                if data.get("done"):
+                    # Map Ollama's done_reason exactly like the non-streaming
+                    # response path, so tool calls finish as tool_calls.
+                    finish_reason = (
+                        "tool_calls"
+                        if message.get("tool_calls")
+                        else data.get("done_reason", "stop")
+                    )
+                    if data.get("eval_count") is not None:
+                        usage = {
+                            "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                            "completion_tokens": int(data.get("eval_count") or 0),
+                            "total_tokens": int(data.get("prompt_eval_count") or 0)
+                            + int(data.get("eval_count") or 0),
+                        }
                 chunk = {
                     "id": request_id,
                     "object": "chat.completion.chunk",
@@ -274,20 +323,23 @@ async def _stream(
                         {
                             "index": 0,
                             "delta": delta,
-                            "finish_reason": (
-                                data.get("done_reason") if data.get("done") else None
-                            ),
+                            "finish_reason": finish_reason,
                         }
                     ],
                 }
-                if data.get("done") and data.get("eval_count") is not None:
-                    chunk["usage"] = {
-                        "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                        "completion_tokens": int(data.get("eval_count") or 0),
-                        "total_tokens": int(data.get("prompt_eval_count") or 0)
-                        + int(data.get("eval_count") or 0),
-                    }
+                if usage is not None and not include_usage:
+                    chunk["usage"] = usage
                 yield f"data: {json.dumps(chunk)}\n\n"
+                if usage is not None and include_usage:
+                    usage_chunk = {
+                        "id": request_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [],
+                        "usage": usage,
+                    }
+                    yield f"data: {json.dumps(usage_chunk)}\n\n"
             else:
                 yield f"data: {line}\n\n"
     except InferenceError as exc:

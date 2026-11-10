@@ -8,6 +8,7 @@ import httpx
 
 from inference.config import settings
 from inference.errors import InferenceError
+from inference.models import supports_thinking
 
 
 class OllamaBackend:
@@ -160,11 +161,18 @@ class OllamaBackend:
             "model": model,
             "messages": payload.get("messages", []),
             "stream": stream,
-            "keep_alive": payload.get("keep_alive") or settings.ollama_keep_alive,
+            # A falsy keep_alive (e.g. 0 = unload immediately) must not fall
+            # back to the configured residency default (GW-19).
+            "keep_alive": (
+                payload["keep_alive"] if "keep_alive" in payload else settings.ollama_keep_alive
+            ),
             "options": options,
         }
-        think = payload.get("think")
-        body["think"] = bool(think) if think is not None else settings.ollama_think_default
+        # Ollama rejects `think` for model families that do not support it
+        # (GW-10): only send the flag to thinking-capable models.
+        if supports_thinking(model):
+            think = payload.get("think")
+            body["think"] = bool(think) if think is not None else settings.ollama_think_default
         if payload.get("stop") is not None:
             options["stop"] = payload["stop"]
         if payload.get("tools") is not None:
