@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.5.0
+
+### Breaking / wire-contract changes
+
+- InferenceError responses now return the OpenAI error envelope
+  (`{"error": {"code", "message", "retryable", "request_id"}}`) instead of
+  FastAPI's `{"detail": ...}` shape, so OpenAI-SDK clients get native error
+  handling across non-streaming and streaming paths.
+- Previously tolerated-but-unimplemented chat parameters (`n`, `logprobs`,
+  `top_logprobs`, `logit_bias`, `presence_penalty`, `frequency_penalty`) are
+  now rejected with an OpenAI-format `400 UNSUPPORTED_PARAMETER` instead of
+  being silently dropped.
+- A backend stream that ends without its terminal `done` event now fails with
+  `502 STREAM_INCOMPLETE` (retryable) instead of being counted as a success.
+- `POST /v1/*` request bodies larger than `MAX_REQUEST_BODY_MIB` (default 8)
+  are rejected with `413 REQUEST_TOO_LARGE` before validation.
+- Prompts that do not fit the effective context window are rejected with
+  `400 CONTEXT_LIMIT_EXCEEDED` at admission instead of being silently
+  truncated by the backend with HTTP 200.
+
+### Streaming compliance
+
+- Malformed backend SSE lines are skipped and logged instead of aborting an
+  otherwise healthy stream.
+- Ollama's `done_reason` is mapped exactly like the non-streaming path, so
+  tool calls finish as `finish_reason: "tool_calls"` in streaming too.
+- Streaming tool calls are emitted as OpenAI-indexed deltas
+  (`{index, id, type, function:{name, arguments}}`) so OpenAI-SDK stream
+  parsers work.
+- `stream_options.include_usage` is honored with a final usage-only chunk
+  (empty choices); without it the usage object stays inline on the final
+  chunk.
+
+### Ops / reliability
+
+- `MAX_QUEUE_SIZE=0` is clamped to 1 (`asyncio.Queue` treats maxsize=0 as
+  unbounded), restoring the bounded-queue guarantee.
+- uvicorn starts with `--timeout-graceful-shutdown 25` (under the Compose
+  30s `stop_grace_period`) so in-flight generations finish or fail cleanly
+  instead of being killed mid-stream.
+- The ollama container now receives the recorded `OLLAMA_NUM_THREADS` /
+  `OLLAMA_KV_CACHE_TYPE` operator knobs.
+- Compose and Dockerfile healthchecks probe `/ready` (backend-aware) instead
+  of `/health`.
+- Falsy `keep_alive` (0 = unload immediately) no longer falls back to the
+  configured residency default; the `think` flag is only sent to
+  thinking-capable model families.
+- `ACTIVE_REQUEST_AGE` tracks the oldest active entry instead of being
+  stomped to zero on every admission.
+- The OpenAPI version metadata now tracks the installed package version
+  instead of a hardcoded constant.
+
 ## 0.4.0
 
 ### Features

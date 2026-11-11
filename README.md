@@ -1,6 +1,6 @@
 # jarvis-inference
 
-Current release candidate: **0.4.0** (reasoning-model support and explicit thinking-mode control). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current release: **0.5.0** (P0 hardening: OpenAI error envelope, honest parameter rejection, bounded request admission, and durable streaming semantics). See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Production-grade CPU inference gateway for the Jarvis stack.
 
