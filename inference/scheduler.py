@@ -44,6 +44,38 @@ class StreamLease:
     released: bool = False
 
 
+def _check_context_window(payload: dict[str, Any]) -> None:
+    """Reject requests that cannot fit the effective context window (GW-6).
+
+    Only an explicit num_ctx override was checked before; the actual prompt
+    was never measured, so oversized prompts were silently truncated by the
+    backend with HTTP 200. The estimate is deliberately conservative
+    (escaped characters count) for admission purposes.
+    """
+    requested_context = payload.get("num_ctx")
+    if requested_context is not None and int(requested_context) > settings.max_context_length:
+        raise InferenceError(
+            "CONTEXT_LIMIT_EXCEEDED",
+            f"num_ctx cannot exceed the configured limit of {settings.max_context_length}",
+            False,
+            400,
+        )
+    effective = (
+        int(requested_context) if requested_context is not None else settings.max_context_length
+    )
+    messages = payload.get("messages", [])
+    estimated = (len(json.dumps(messages).encode("utf-8")) + 2) // 3
+    if estimated > effective:
+        raise InferenceError(
+            "CONTEXT_LIMIT_EXCEEDED",
+            f"estimated prompt size {estimated} tokens exceeds the "
+            f"{effective} token context window; shorten the conversation or "
+            "raise MAX_CONTEXT_LENGTH",
+            False,
+            400,
+        )
+
+
 class Scheduler:
     def __init__(self) -> None:
         self._semaphore = asyncio.Semaphore(settings.max_concurrent_requests)
@@ -271,14 +303,7 @@ class Scheduler:
     async def chat(self, payload: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         model = str(payload.get("model") or settings.default_model)
         model_manager.validate_chat(model)
-        requested_context = payload.get("num_ctx")
-        if requested_context is not None and int(requested_context) > settings.max_context_length:
-            raise InferenceError(
-                "CONTEXT_LIMIT_EXCEEDED",
-                f"num_ctx cannot exceed the configured limit of {settings.max_context_length}",
-                False,
-                400,
-            )
+        _check_context_window(payload)
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()
@@ -354,14 +379,7 @@ class Scheduler:
         """Admit a stream before HTTP headers are committed by StreamingResponse."""
         model = str(payload.get("model") or settings.default_model)
         model_manager.validate_chat(model)
-        requested_context = payload.get("num_ctx")
-        if requested_context is not None and int(requested_context) > settings.max_context_length:
-            raise InferenceError(
-                "CONTEXT_LIMIT_EXCEEDED",
-                f"num_ctx cannot exceed the configured limit of {settings.max_context_length}",
-                False,
-                400,
-            )
+        _check_context_window(payload)
         request_id = request_id or self._new_request_id()
         self._enqueue()
         enqueued = time.perf_counter()

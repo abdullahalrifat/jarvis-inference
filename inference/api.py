@@ -296,7 +296,31 @@ async def _stream(
                 if message.get("thinking"):
                     delta["reasoning_content"] = message["thinking"]
                 if message.get("tool_calls"):
-                    delta["tool_calls"] = message["tool_calls"]
+                    # Ollama streams complete tool_calls objects; OpenAI-SDK
+                    # stream parsers expect indexed deltas (GW-8).
+                    delta["tool_calls"] = [
+                        {
+                            "index": position,
+                            "id": f"{request_id}-call-{position}",
+                            "type": "function",
+                            "function": {
+                                "name": str((call.get("function") or {}).get("name") or ""),
+                                "arguments": (
+                                    json.dumps(
+                                        (call.get("function") or {}).get("arguments", {}),
+                                        ensure_ascii=False,
+                                    )
+                                    if not isinstance(
+                                        (call.get("function") or {}).get("arguments"),
+                                        str,
+                                    )
+                                    else (call["function"]["arguments"] or "")
+                                ),
+                            },
+                        }
+                        for position, call in enumerate(message["tool_calls"])
+                        if isinstance(call, dict)
+                    ]
                 finish_reason: str | None = None
                 usage = None
                 if data.get("done"):

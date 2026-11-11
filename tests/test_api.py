@@ -399,3 +399,37 @@ def test_stream_defaults_keep_inline_usage_chunk(monkeypatch) -> None:
     final_chunk = chunks[-1]
     assert final_chunk["choices"][0]["finish_reason"] == "stop"
     assert final_chunk["usage"]["total_tokens"] == 12
+
+
+def test_context_limit_is_enforced_for_oversized_prompts(monkeypatch) -> None:
+    """GW-6: oversized prompts must be rejected, not silently truncated."""
+    monkeypatch.setattr("inference.scheduler.settings.max_context_length", 64)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [
+                {"role": "user", "content": "filler " * 200},
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "CONTEXT_LIMIT_EXCEEDED"
+    assert "context window" in error["message"]
+
+
+def test_request_body_limit_returns_413(monkeypatch) -> None:
+    """GW-5: oversized POST bodies are rejected before validation."""
+    monkeypatch.setattr("inference.main.settings.max_request_body_mib", 0.05)
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": "x" * 200_000}],
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "REQUEST_TOO_LARGE"
