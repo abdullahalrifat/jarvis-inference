@@ -27,6 +27,7 @@ from inference.metrics import (
     QUEUE_WAIT,
     REQUESTS,
     RESOURCE_REJECTIONS,
+    STALE_REQUESTS,
     TOKENS,
     TOKENS_PER_SECOND,
     TTFT,
@@ -84,6 +85,7 @@ class Scheduler:
         self._llama = LlamaCppBackend()
         self._active: dict[str, dict[str, Any]] = {}
         self._request_counter = 0
+        self._sweeper_task: asyncio.Task[None] | None = None
         self._circuits = {
             "ollama": CircuitBreaker(
                 settings.circuit_failure_threshold, settings.circuit_recovery_seconds
@@ -160,7 +162,11 @@ class Scheduler:
             ACTIVE_REQUEST_AGE.set(0)
 
     def _release_slot(self, request_id: str, model: str) -> None:
-        self._active.pop(request_id, None)
+        entry = self._active.pop(request_id, None)
+        if entry is None:
+            # The slot was already reclaimed by the stale sweeper (GW-15);
+            # releasing again would double-count the semaphore.
+            return
         self._semaphore.release()
         ACTIVE_REQUESTS.dec()
         if self._active:
@@ -168,6 +174,57 @@ class Scheduler:
             ACTIVE_REQUEST_AGE.set(max(0.0, time.perf_counter() - oldest))
         else:
             ACTIVE_REQUEST_AGE.set(0)
+
+    @property
+    def stale_request_seconds(self) -> float:
+        """Age after which an active slot must belong to an abandoned request.
+
+        Chat, stream and embedding calls are all bounded by wait_for timeouts,
+        so a slot held for 1.5x the longest of those timeouts can only be a
+        leaked stream whose cleanup never ran.
+        """
+        return 1.5 * max(settings.chat_timeout_seconds, settings.stream_timeout_seconds)
+
+    def sweep_stale(self) -> list[str]:
+        """Reclaim slots held by abandoned requests (GW-15).
+
+        A streaming generator that is never consumed holds its semaphore slot
+        and leaves ACTIVE_MODEL at 1 forever because its cleanup finally never
+        runs. Any entry in ``_active`` older than ``stale_request_seconds``
+        cannot be a legitimately running request, so it is force-released
+        here. Returns the swept request ids.
+        """
+        limit = self.stale_request_seconds
+        now = time.perf_counter()
+        swept: list[str] = []
+        for request_id, entry in list(self._active.items()):
+            if now - entry["started_monotonic"] <= limit:
+                continue
+            model = entry["model"]
+            self._active.pop(request_id, None)
+            self._semaphore.release()
+            ACTIVE_REQUESTS.dec()
+            STALE_REQUESTS.inc()
+            swept.append(request_id)
+            if not any(other["model"] == model for other in self._active.values()):
+                ACTIVE_MODEL.labels(model=model).set(0)
+        if self._active:
+            oldest = min(item["started_monotonic"] for item in self._active.values())
+            ACTIVE_REQUEST_AGE.set(max(0.0, time.perf_counter() - oldest))
+        else:
+            ACTIVE_REQUEST_AGE.set(0)
+        return swept
+
+    def start_sweeper(self) -> None:
+        """Start the background loop that periodically sweeps stale slots."""
+        if self._sweeper_task is not None and not self._sweeper_task.done():
+            return
+        self._sweeper_task = asyncio.create_task(self._sweep_loop(), name="scheduler-sweeper")
+
+    async def _sweep_loop(self) -> None:
+        while True:
+            await asyncio.sleep(max(1.0, self.stale_request_seconds / 3.0))
+            self.sweep_stale()
 
     def _backend_failure(self, exc: InferenceError) -> None:
         if exc.code in {
@@ -558,6 +615,14 @@ class Scheduler:
         return {"ready": True, "missing_models": []}
 
     async def close(self) -> None:
+        task = self._sweeper_task
+        self._sweeper_task = None
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         await self._ollama.close()
         await self._llama.close()
 

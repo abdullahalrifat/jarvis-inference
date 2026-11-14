@@ -1,8 +1,11 @@
 import asyncio
+import time
 
 import pytest
 
+from inference.config import settings
 from inference.errors import InferenceError
+from inference.metrics import ACTIVE_MODEL
 from inference.models import model_manager
 from inference.scheduler import Scheduler
 
@@ -437,3 +440,89 @@ async def test_active_request_age_tracks_oldest_entry(scheduler: Scheduler, monk
     # Two seconds elapsed since req-old started: the gauge must still be
     # driven by the OLD request, not stomped to 0 by the new admission.
     assert abs(reading - 2.0) < 1e-6
+
+
+def _active_entry(request_id: str, age_seconds: float) -> dict:
+    """Build an _active entry that looks admitted `age_seconds` ago."""
+    return {
+        "request_id": request_id,
+        "model": "qwen3:1.7b",
+        "backend": "fake",
+        "started_at": time.time() - age_seconds,
+        "started_monotonic": time.perf_counter() - age_seconds,
+    }
+
+
+@pytest.mark.asyncio
+async def test_sweep_stale_reclaims_abandoned_slot(scheduler: Scheduler) -> None:
+    """GW-15: a slot held longer than 1.5x the max timeout belongs to an abandoned stream."""
+    stale_age = 1.5 * max(settings.chat_timeout_seconds, settings.stream_timeout_seconds) + 10
+    await scheduler._semaphore.acquire()
+    scheduler._active["inf-1"] = _active_entry("inf-1", stale_age)
+    ACTIVE_MODEL.labels(model="qwen3:1.7b").set(1)
+
+    swept = scheduler.sweep_stale()
+
+    assert swept == ["inf-1"]
+    assert scheduler._active == {}
+    assert scheduler._semaphore._value == 1
+    assert ACTIVE_MODEL.labels(model="qwen3:1.7b")._value.get() == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_stale_leaves_running_requests(scheduler: Scheduler) -> None:
+    """GW-15: entries younger than the stale threshold are untouched."""
+    await scheduler._semaphore.acquire()
+    scheduler._active["inf-1"] = _active_entry("inf-1", 0.0)
+
+    swept = scheduler.sweep_stale()
+
+    assert swept == []
+    assert "inf-1" in scheduler._active
+    scheduler._release_slot("inf-1", "qwen3:1.7b")
+
+
+@pytest.mark.asyncio
+async def test_release_slot_after_sweep_does_not_over_release(scheduler: Scheduler) -> None:
+    """GW-15: the abandoned handler's late finally must not double-release."""
+    stale_age = 1.5 * max(settings.chat_timeout_seconds, settings.stream_timeout_seconds) + 10
+    await scheduler._semaphore.acquire()
+    scheduler._active["inf-1"] = _active_entry("inf-1", stale_age)
+
+    scheduler.sweep_stale()
+    assert scheduler._semaphore._value == 1
+    scheduler._release_slot("inf-1", "qwen3:1.7b")
+    assert scheduler._semaphore._value == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_keeps_active_model_gauge_for_live_requests(scheduler: Scheduler) -> None:
+    """GW-15: sweeping one stale entry must not stomp a live request's model gauge."""
+    scheduler._semaphore = asyncio.Semaphore(2)
+    stale_age = 1.5 * max(settings.chat_timeout_seconds, settings.stream_timeout_seconds) + 10
+    await scheduler._semaphore.acquire()
+    await scheduler._semaphore.acquire()
+    scheduler._active["inf-1"] = _active_entry("inf-1", stale_age)
+    scheduler._active["inf-2"] = _active_entry("inf-2", 0.0)
+    ACTIVE_MODEL.labels(model="qwen3:1.7b").set(1)
+
+    swept = scheduler.sweep_stale()
+
+    assert swept == ["inf-1"]
+    assert ACTIVE_MODEL.labels(model="qwen3:1.7b")._value.get() == 1
+    scheduler._release_slot("inf-2", "qwen3:1.7b")
+
+
+@pytest.mark.asyncio
+async def test_sweeper_task_starts_and_close_cancels_it(scheduler: Scheduler) -> None:
+    """GW-15: the background sweeper is idempotent to start and cancelled on close."""
+    scheduler.start_sweeper()
+    task = scheduler._sweeper_task
+    assert task is not None and not task.done()
+    scheduler.start_sweeper()  # must not spawn a second loop
+    assert scheduler._sweeper_task is task
+
+    await scheduler.close()
+
+    assert task.done()
+    assert scheduler._sweeper_task is None

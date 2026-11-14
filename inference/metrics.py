@@ -50,6 +50,10 @@ BACKEND_ERRORS = Counter(
     "Backend failures and timeouts.",
     ["backend", "code"],
 )
+STALE_REQUESTS = Counter(
+    "inference_stale_requests_total",
+    "Abandoned requests whose slots were reclaimed by the sweeper.",
+)
 CIRCUIT_STATE = Gauge(
     "inference_circuit_open",
     "Whether the backend circuit is open (1) or closed.",

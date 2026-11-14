@@ -28,8 +28,11 @@ class CircuitBreaker:
         elapsed = time.monotonic() - state.opened_at
         if elapsed < self.recovery_seconds:
             raise CircuitOpenError("backend circuit is open")
-        if not state.half_open:
-            state.half_open = True
+        if state.half_open:
+            # A single trial request is already probing the backend (GW-12);
+            # concurrent callers must not flood it while it is half-open.
+            raise CircuitOpenError("backend circuit is open (half-open trial in progress)")
+        state.half_open = True
 
     def success(self) -> None:
         self._state = CircuitState()

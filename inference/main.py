@@ -48,6 +48,7 @@ class BodyLimitMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     validate_security_config()
+    scheduler.start_sweeper()
     yield
     try:
         await asyncio.wait_for(scheduler.close(), timeout=settings.shutdown_timeout_seconds)
